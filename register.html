@@ -68,9 +68,17 @@
     const registerBtn = document.getElementById('registerBtn');
     const referralInput = document.getElementById('referralCode');
 
-    referralInput.addEventListener('input', () => {
-      referralInput.value = referralInput.value.toUpperCase();
-    });
+    // Prefill referral code from URL: /register.html?ref=CV123ABC
+const urlParams = new URLSearchParams(window.location.search);
+const refFromUrl = urlParams.get('ref');
+
+if (refFromUrl) {
+  referralInput.value = refFromUrl.toUpperCase();
+}
+
+referralInput.addEventListener('input', () => {
+  referralInput.value = referralInput.value.toUpperCase();
+});
 
     function showAlert(message, type = 'error') {
       alertBox.textContent = message;
