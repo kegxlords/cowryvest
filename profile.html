@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Profile | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div id="profileAlert" class="alert error"></div>
+
+    <section class="profile-hero">
+      <div id="avatarContainer">
+        <div class="avatar-initials">C</div>
+      </div>
+
+      <div class="profile-info">
+        <h1 id="profileName">Loading...</h1>
+        <p id="profileEmail">-</p>
+        <p id="profilePhone">-</p>
+      </div>
+
+      <div class="profile-actions">
+        <a href="/settings.html" class="btn btn-primary">Edit Profile</a>
+        <a href="/referral.html" class="btn btn-secondary">Referrals</a>
+      </div>
+    </section>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <h3>Main Balance</h3>
+        <div class="value credit" id="mainBalance">$0.00</div>
+      </div>
+
+      <div class="info-card">
+        <h3>Frozen Balance</h3>
+        <div class="value" id="frozenBalance" style="color: var(--frozen);">$0.00</div>
+      </div>
+
+      <div class="info-card">
+        <h3>Referral Code</h3>
+        <div class="value" id="referralCode">---</div>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <section class="section-card">
+        <h2>Portfolio Summary</h2>
+
+        <div class="info-grid" style="margin-bottom: 0;">
+          <div class="info-card">
+            <h3>Active Holdings</h3>
+            <div class="value" id="activeHoldings">0</div>
+          </div>
+
+          <div class="info-card">
+            <h3>Current Value</h3>
+            <div class="value" id="portfolioValue">$0.00</div>
+          </div>
+
+          <div class="info-card">
+            <h3>Total Invested</h3>
+            <div class="value" id="totalInvested">$0.00</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2>Recent Activity</h2>
+
+        <div class="table-responsive">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th style="text-align: right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="recentActivityBody">
+              <tr>
+                <td colspan="3" class="empty-state">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initUI();
+
+    const alertBox = document.getElementById('profileAlert');
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function formatMoney(value) {
+      return `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    function getInitials(name) {
+      return String(name || 'C')
+        .trim()
+        .split(' ')
+        .map(part => part[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+    }
+
+    function renderAvatar(profile) {
+      const container = document.getElementById('avatarContainer');
+
+      if (profile.avatar_url) {
+        container.innerHTML = `<img src="${profile.avatar_url}" alt="Profile avatar" class="avatar" />`;
+      } else {
+        container.innerHTML = `<div class="avatar-initials">${getInitials(profile.full_name)}</div>`;
+      }
+    }
+
+    async function loadProfile() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/user?action=profile', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load profile.');
+        }
+
+        const profile = result.profile || {};
+
+        document.getElementById('profileName').textContent = profile.full_name || 'Investor';
+        document.getElementById('profileEmail').textContent = profile.email || '-';
+        document.getElementById('profilePhone').textContent = profile.phone ? `Phone: ${profile.phone}` : 'Phone not set';
+        document.getElementById('mainBalance').textContent = formatMoney(profile.main_balance);
+        document.getElementById('frozenBalance').textContent = formatMoney(profile.frozen_balance);
+        document.getElementById('referralCode').textContent = profile.referral_code || '---';
+
+        renderAvatar(profile);
+      } catch (err) {
+        showAlert(err.message);
+      }
+    }
+
+    async function loadPortfolio() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: holdings, error } = await supabase
+          .from('user_stocks')
+          .select(`
+            quantity,
+            total_initial_invested,
+            stocks (
+              current_price
+            )
+          `)
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        let currentTotal = 0;
+        let investedTotal = 0;
+
+        (holdings || []).forEach(h => {
+          currentTotal += h.quantity * Number(h.stocks?.current_price || 0);
+          investedTotal += Number(h.total_initial_invested || 0);
+        });
+
+        document.getElementById('activeHoldings').textContent = holdings?.length || 0;
+        document.getElementById('portfolioValue').textContent = formatMoney(currentTotal);
+        document.getElementById('totalInvested').textContent = formatMoney(investedTotal);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function loadRecentActivity() {
+      const tbody = document.getElementById('recentActivityBody');
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/user?action=history', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load activity.');
+        }
+
+        const history = (result.history || []).slice(0, 5);
+
+        if (history.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No activity yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = history.map(item => {
+          const sign = item.direction === 'credit' ? '+' : '-';
+          const amountClass = item.direction === 'credit' ? 'credit' : 'debit';
+
+          return `
+            <tr>
+              <td>${new Date(item.created_at).toLocaleDateString()}</td>
+              <td>${item.label}</td>
+              <td class="${amountClass}" style="text-align: right; font-weight: 800;">
+                ${sign}${formatMoney(item.amount)}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="3" style="color: var(--danger);">${err.message}</td></tr>`;
+      }
+    }
+
+    await loadProfile();
+    await loadPortfolio();
+    await loadRecentActivity();
+  </script>
+</body>
+      </html>
