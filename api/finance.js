@@ -6,6 +6,13 @@ import {
   parseAmount
 } from '../lib/supabase-admin.js';
 
+function cleanText(value, maxLength = 160) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, maxLength);
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -26,12 +33,12 @@ export default async function handler(req, res) {
 
     // -------------------------------------
     // DEPOSIT REQUEST
+    // Only amount, payment method, and depositor name required
     // -------------------------------------
     if (action === 'deposit_request') {
       const amount = parseAmount(body.amount);
-      const paymentMethod = (body.payment_method || '').trim();
-      const reference = (body.reference || '').trim();
-      const proofUrl = (body.proof_url || '').trim();
+      const paymentMethod = cleanText(body.payment_method, 80);
+      const depositorName = cleanText(body.depositor_name, 120);
 
       if (!amount) {
         return res.status(400).json({ error: 'Valid deposit amount is required' });
@@ -39,6 +46,10 @@ export default async function handler(req, res) {
 
       if (!paymentMethod) {
         return res.status(400).json({ error: 'Payment method is required' });
+      }
+
+      if (!depositorName) {
+        return res.status(400).json({ error: 'Name on deposit is required' });
       }
 
       const { data: request, error } = await supabaseAdmin
@@ -49,8 +60,10 @@ export default async function handler(req, res) {
           amount,
           status: 'pending',
           payment_method: paymentMethod,
-          reference: reference || null,
-          proof_url: proofUrl || null
+          depositor_name: depositorName,
+          destination_details: {
+            depositor_name: depositorName
+          }
         })
         .select()
         .maybeSingle();
@@ -71,14 +84,16 @@ export default async function handler(req, res) {
       const amount = parseAmount(body.amount);
       const destinationDetails = body.destination_details || {};
 
+      const accountName = cleanText(destinationDetails.account_name, 120);
+      const accountNumber = cleanText(destinationDetails.account_number, 160);
+      const bankName = cleanText(destinationDetails.bank_name, 120);
+      const paymentMethod = cleanText(destinationDetails.payment_method, 80);
+
       if (!amount) {
         return res.status(400).json({ error: 'Valid withdrawal amount is required' });
       }
 
-      if (
-        !destinationDetails.account_name ||
-        !destinationDetails.account_number
-      ) {
+      if (!accountName || !accountNumber) {
         return res.status(400).json({
           error: 'Account name and account number/wallet address are required'
         });
@@ -107,8 +122,13 @@ export default async function handler(req, res) {
           type: 'withdrawal',
           amount,
           status: 'pending',
-          payment_method: destinationDetails.payment_method || 'bank',
-          destination_details: destinationDetails
+          payment_method: paymentMethod || 'bank',
+          destination_details: {
+            payment_method: paymentMethod || 'bank',
+            account_name: accountName,
+            account_number: accountNumber,
+            bank_name: bankName || null
+          }
         })
         .select()
         .maybeSingle();
