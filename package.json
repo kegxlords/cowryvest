@@ -1,0 +1,18 @@
+{
+  "name": "cowryvest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cowryvest stock investment platform frontend and Vercel serverless API.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "npx vercel dev",
+    "deploy": "npx vercel --prod",
+    "deploy:staging": "npx vercel"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0"
+  }
+}
