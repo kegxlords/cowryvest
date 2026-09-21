@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Credit Promoters | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div class="page-header">
+      <div>
+        <h1>Promoter Frozen Balance</h1>
+        <p>Search a user and credit their frozen balance. Frozen balance can only be used for investments and returns to frozen balance on conversion.</p>
+      </div>
+    </div>
+
+    <nav class="admin-subnav">
+      <a href="/admin/index.html">Overview</a>
+      <a href="/admin/stocks.html">Stocks</a>
+      <a href="/admin/promoters.html" class="active">Promoters</a>
+      <a href="/admin/requests.html">Requests</a>
+    </nav>
+
+    <div id="adminAlert" class="alert error"></div>
+
+    <section class="admin-panel">
+      <h2>Search User</h2>
+
+      <div class="admin-toolbar">
+        <div class="form-group">
+          <label for="searchQuery">Name, Email, or Referral Code</label>
+          <input type="text" id="searchQuery" class="form-control" placeholder="Search user..." />
+        </div>
+
+        <button class="btn btn-primary" id="searchBtn" onclick="searchUsers()">Search</button>
+      </div>
+
+      <div id="userResults" class="user-search-results"></div>
+    </section>
+
+    <section class="admin-panel">
+      <h2>Credit Frozen Balance</h2>
+
+      <div id="selectedUserBox" class="selected-user-box">
+        Selected user: <strong id="selectedUserName">-</strong><br>
+        Email: <span id="selectedUserEmail">-</span>
+      </div>
+
+      <form id="creditForm">
+        <div class="admin-toolbar">
+          <div class="form-group">
+            <label for="creditAmount">Amount</label>
+            <input type="number" id="creditAmount" class="form-control" min="0.01" step="0.01" required />
+          </div>
+
+          <div class="form-group">
+            <label for="creditNote">Note</label>
+            <input type="text" id="creditNote" class="form-control" placeholder="e.g. Weekly promoter bonus" />
+          </div>
+
+          <button type="submit" class="btn btn-dark" id="creditBtn">Credit Frozen Balance</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-panel">
+      <h2>Recent Frozen Credits</h2>
+
+      <div class="table-responsive">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>User</th>
+              <th>Amount</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="creditsBody">
+            <tr>
+              <td colspan="4" class="loading-text">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initAdminUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initAdminUI();
+
+    let selectedUser = null;
+
+    const alertBox = document.getElementById('adminAlert');
+    const selectedUserBox = document.getElementById('selectedUserBox');
+    const creditForm = document.getElementById('creditForm');
+    const creditBtn = document.getElementById('creditBtn');
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function hideAlert() {
+      alertBox.style.display = 'none';
+    }
+
+    function formatMoney(value) {
+      return `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    window.searchUsers = async function() {
+      hideAlert();
+
+      const q = document.getElementById('searchQuery').value.trim();
+      const resultsBox = document.getElementById('userResults');
+      resultsBox.innerHTML = '<div class="loading-text">Searching...</div>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch(`/api/admin?action=users&q=${encodeURIComponent(q)}`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to search users.');
+        }
+
+        const users = result.users || [];
+
+        if (users.length === 0) {
+          resultsBox.innerHTML = '<div class="empty-text">No users found.</div>';
+          return;
+        }
+
+        resultsBox.innerHTML = users.map(user => `
+          <div class="user-result" data-user-id="${user.id}">
+            <div>
+              <div class="name">${user.full_name || 'Unnamed user'}</div>
+              <div class="meta">${user.email}</div>
+              <div class="meta">Ref: ${user.referral_code} • Main: ${formatMoney(user.main_balance)} • Frozen: ${formatMoney(user.frozen_balance)}</div>
+            </div>
+
+            <button class="btn btn-primary" onclick='selectUser(${JSON.stringify(user).replace(/'/g, "&#39;")})'>
+              Select
+            </button>
+          </div>
+        `).join('');
+      } catch (err) {
+        resultsBox.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
+      }
+    };
+
+    window.selectUser = function(user) {
+      selectedUser = user;
+
+      document.getElementById('selectedUserName').textContent = user.full_name || 'Unnamed user';
+      document.getElementById('selectedUserEmail').textContent = user.email;
+      selectedUserBox.classList.add('active');
+
+      document.querySelectorAll('.user-result').forEach(el => el.classList.remove('selected'));
+      const row = document.querySelector(`.user-result[data-user-id="${user.id}"]`);
+      if (row) row.classList.add('selected');
+    };
+
+    creditForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      if (!selectedUser) {
+        showAlert('Select a user first.');
+        return;
+      }
+
+      const amount = Number.parseFloat(document.getElementById('creditAmount').value);
+      const note = document.getElementById('creditNote').value.trim();
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        showAlert('Enter a valid credit amount.');
+        return;
+      }
+
+      creditBtn.disabled = true;
+      creditBtn.textContent = 'Crediting...';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/admin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'credit_frozen',
+            target_user_id: selectedUser.id,
+            credit_amount: amount,
+            note
+          })
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to credit frozen balance.');
+        }
+
+        showAlert('Frozen balance credited successfully.', 'success');
+        creditForm.reset();
+        await loadRecentCredits();
+        await searchUsers();
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        creditBtn.disabled = false;
+        creditBtn.textContent = 'Credit Frozen Balance';
+      }
+    });
+
+    async function loadRecentCredits() {
+      const body = document.getElementById('creditsBody');
+      body.innerHTML = '<tr><td colspan="4" class="loading-text">Loading...</td></tr>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/admin?action=frozen_credits', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load frozen credits.');
+        }
+
+        const credits = result.credits || [];
+
+        if (credits.length === 0) {
+          body.innerHTML = '<tr><td colspan="4" class="empty-text">No frozen credits yet.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = credits.map(c => `
+          <tr>
+            <td>${new Date(c.created_at).toLocaleString()}</td>
+            <td>
+              <strong>${c.profiles?.full_name || 'User'}</strong><br>
+              <small style="color: var(--text-muted);">${c.profiles?.email || ''}</small>
+            </td>
+            <td class="credit">+${formatMoney(c.amount)}</td>
+            <td>${c.description || '-'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        body.innerHTML = `<tr><td colspan="4" style="color: var(--danger);">${err.message}</td></tr>`;
+      }
+    }
+
+    await loadRecentCredits();
+  </script>
+</body>
+</html>
