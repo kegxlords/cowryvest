@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Account | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="auth-wrapper">
+    <div class="auth-card">
+      <h1>Create your account</h1>
+      <p class="subtitle">Start investing in minutes.</p>
+
+      <div id="authAlert" class="alert error"></div>
+
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="fullName">Full Name</label>
+          <input type="text" id="fullName" class="form-control" required />
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" class="form-control" required />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" class="form-control" minlength="8" required />
+          <div class="form-help">Minimum 8 characters</div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmPassword">Confirm Password</label>
+          <input type="password" id="confirmPassword" class="form-control" minlength="8" required />
+        </div>
+
+        <div class="form-group">
+          <label for="referralCode">Referral Code (optional)</label>
+          <input type="text" id="referralCode" class="form-control" placeholder="CV123ABC" />
+        </div>
+
+        <button type="submit" class="btn btn-primary w-full" id="registerBtn">
+          Create Account
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/">Sign in</a>
+      </div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initUI();
+
+    const form = document.getElementById('registerForm');
+    const alertBox = document.getElementById('authAlert');
+    const registerBtn = document.getElementById('registerBtn');
+    const referralInput = document.getElementById('referralCode');
+
+    referralInput.addEventListener('input', () => {
+      referralInput.value = referralInput.value.toUpperCase();
+    });
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function hideAlert() {
+      alertBox.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const full_name = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const referral_code = referralInput.value.trim();
+
+      if (!full_name) {
+        showAlert('Full name is required.');
+        return;
+      }
+
+      if (!email) {
+        showAlert('Email is required.');
+        return;
+      }
+
+      if (password.length < 8) {
+        showAlert('Password must be at least 8 characters.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showAlert('Passwords do not match.');
+        return;
+      }
+
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Creating account...';
+
+      try {
+        const res = await fetch('/api/auth.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register',
+            full_name,
+            email,
+            password,
+            referral_code
+          })
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Registration failed');
+        }
+
+        await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token
+        });
+
+        window.location.href = '/dashboard.html';
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>
