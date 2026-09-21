@@ -1,152 +1,326 @@
-import { supabase } from '../../lib/supabase'; // Adjust path to your lib folder
+// api/wealth.js
+import {
+  supabaseAdmin,
+  getAuthedUser,
+  getBody,
+  parseAmount
+} from '../lib/supabase-admin.js';
 
 export default async function handler(req, res) {
-  // ==========================================
-  // 1. MIDNIGHT CRON JOB (Triggered by Vercel)
-  // ==========================================
-  if (req.query.action === 'midnight-cron') {
-    // Verify Vercel Cron Secret for security
-    const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-    try {
-      // 1. Fetch all active user stocks
-      const { data: allStocks, error } = await supabase.from('user_stocks').select('*');
-      if (error) throw error;
-
-      // 2. Group by user to calculate total daily yield per user
-      const userYields = {};
-      for (const stock of allStocks) {
-        const yieldAmount = stock.total_initial_invested * 0.05; // 5% of initial price
-        if (!userYields[stock.user_id]) userYields[stock.user_id] = 0;
-        userYields[stock.user_id] += yieldAmount;
+  try {
+    // =====================================
+    // MIDNIGHT CRON
+    // GET /api/wealth?action=midnight-cron
+    // =====================================
+    if (req.query.action === 'midnight-cron') {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ error: 'Unauthorized cron access' });
       }
 
-      // 3. Credit yields to Main Balance and log transactions
-      for (const [userId, totalYield] of Object.entries(userYields)) {
-        if (totalYield <= 0) continue;
-        
-        // Add to main balance
-        await supabase.rpc('increment_balance', { 
-          user_id: userId, 
-          amount: totalYield, 
-          balance_type: 'main' 
-        }); // *See note below about RPC
-        
-        // Log transaction
-        await supabase.from('transactions').insert({
+      // 1. Calculate and pay 5% daily yield
+      const { data: holdings, error: holdingsError } = await supabaseAdmin
+        .from('user_stocks')
+        .select('user_id, total_initial_invested');
+
+      if (holdingsError) throw holdingsError;
+
+      const yieldsByUser = {};
+
+      for (const holding of holdings || []) {
+        const yieldAmount =
+          Math.round(Number(holding.total_initial_invested) * 0.05 * 100) / 100;
+
+        if (yieldAmount <= 0) continue;
+
+        yieldsByUser[holding.user_id] =
+          (yieldsByUser[holding.user_id] || 0) + yieldAmount;
+      }
+
+      for (const [userId, totalYield] of Object.entries(yieldsByUser)) {
+        const roundedYield = Math.round(totalYield * 100) / 100;
+
+        const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+          p_user_id: userId,
+          p_amount: roundedYield,
+          p_balance_type: 'main'
+        });
+
+        if (creditError) throw creditError;
+
+        await supabaseAdmin.from('transactions').insert({
           user_id: userId,
           type: 'daily_yield',
-          amount: totalYield,
+          amount: roundedYield,
           balance_type: 'main',
+          status: 'completed',
           description: 'Daily 5% investment yield'
         });
       }
 
-      // 4. Decrement lock-in days by 1 for all stocks where lock_in_days > 0
-      await supabase
-        .from('user_stocks')
-        .update({ lock_in_days: supabase.rpc('decrement_lock_in') }) // Custom SQL function
-        .gt('lock_in_days', 0);
+      // 2. Decrease all lock-in days by 1
+      const { error: decrementError } = await supabaseAdmin.rpc(
+        'decrement_lock_in_days'
+      );
 
-      return res.status(200).json({ success: true, message: 'Midnight processing complete' });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
+      if (decrementError) throw decrementError;
+
+      return res.status(200).json({
+        success: true,
+        message: 'Midnight processing complete',
+        users_credited: Object.keys(yieldsByUser).length
+      });
     }
-  }
 
-  // ==========================================
-  // 2. BUY & SELL STOCKS (User Actions)
-  // ==========================================
-  if (req.method === 'POST') {
-    const { action, stock_id, quantity, purchase_source, user_stock_id } = req.body;
-    
-    // Get authenticated user
-    const authHeader = req.headers.authorization;
-    const { data: { user } } = await supabase.auth.getUser(authHeader?.split(' ')[1]);
-    if (!user) return res.status(401).json({ error: 'Unauthenticated' });
+    // =====================================
+    // USER ACTIONS
+    // POST /api/wealth
+    // =====================================
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
 
-    // --- BUY STOCK ---
+    const user = await getAuthedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthenticated' });
+    }
+
+    const body = getBody(req);
+    const action = body.action;
+
+    // -------------------------------------
+    // BUY STOCK
+    // -------------------------------------
     if (action === 'buy') {
-      const { data: stock } = await supabase.from('stocks').select('current_price').eq('id', stock_id).single();
-      const totalCost = stock.current_price * quantity;
+      const stockId = body.stock_id;
+      const quantity = parseInt(body.quantity, 10);
+      const purchaseSource = body.purchase_source;
 
-      // Check balance
-      const balanceColumn = purchase_source === 'frozen' ? 'frozen_balance' : 'main_balance';
-      const { data: profile } = await supabase.from('profiles').select(balanceColumn).eq('id', user.id).single();
-      
-      if (profile[balanceColumn] < totalCost) {
+      if (!stockId) {
+        return res.status(400).json({ error: 'Stock ID is required' });
+      }
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return res.status(400).json({ error: 'Quantity must be greater than zero' });
+      }
+
+      if (!['main', 'frozen'].includes(purchaseSource)) {
+        return res.status(400).json({ error: 'Invalid purchase source' });
+      }
+
+      const { data: stock, error: stockError } = await supabaseAdmin
+        .from('stocks')
+        .select('id, company_name, current_price')
+        .eq('id', stockId)
+        .maybeSingle();
+
+      if (stockError) throw stockError;
+      if (!stock) {
+        return res.status(404).json({ error: 'Stock not found' });
+      }
+
+      const totalCost = Math.round(Number(stock.current_price) * quantity * 100) / 100;
+
+      // Deduct balance safely
+      const { data: debitSuccess, error: debitError } = await supabaseAdmin.rpc(
+        'debit_balance',
+        {
+          p_user_id: user.id,
+          p_amount: totalCost,
+          p_balance_type: purchaseSource
+        }
+      );
+
+      if (debitError) throw debitError;
+
+      if (!debitSuccess) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
 
-      // Deduct balance
-      await supabase.from('profiles').update({ [balanceColumn]: profile[balanceColumn] - totalCost }).eq('id', user.id);
-
-      // Upsert into user_stocks (Handles the additive lock-in logic)
-      const { data: existingHolding } = await supabase
+      // Check existing holding for same stock + same source
+      const { data: existingHolding, error: existingError } = await supabaseAdmin
         .from('user_stocks')
         .select('*')
         .eq('user_id', user.id)
-        .eq('stock_id', stock_id)
-        .eq('purchase_source', purchase_source)
-        .single();
+        .eq('stock_id', stockId)
+        .eq('purchase_source', purchaseSource)
+        .maybeSingle();
+
+      if (existingError) {
+        // Compensate debit
+        await supabaseAdmin.rpc('credit_balance', {
+          p_user_id: user.id,
+          p_amount: totalCost,
+          p_balance_type: purchaseSource
+        });
+
+        throw existingError;
+      }
+
+      let savedHolding = null;
 
       if (existingHolding) {
-        // Additive logic: Add shares, add initial cost, ADD days to lock-in
-        await supabase.from('user_stocks').update({
-          quantity: existingHolding.quantity + quantity,
-          total_initial_invested: existingHolding.total_initial_invested + totalCost,
-          lock_in_days: existingHolding.lock_in_days + quantity // Additive lock-in!
-        }).eq('id', existingHolding.id);
+        // Additive lock-in logic:
+        // existing lock-in days + newly bought quantity
+        const { data: updated, error: updateError } = await supabaseAdmin
+          .from('user_stocks')
+          .update({
+            quantity: existingHolding.quantity + quantity,
+            total_initial_invested:
+              Number(existingHolding.total_initial_invested) + totalCost,
+            lock_in_days: existingHolding.lock_in_days + quantity
+          })
+          .eq('id', existingHolding.id)
+          .select()
+          .maybeSingle();
+
+        if (updateError) {
+          await supabaseAdmin.rpc('credit_balance', {
+            p_user_id: user.id,
+            p_amount: totalCost,
+            p_balance_type: purchaseSource
+          });
+
+          throw updateError;
+        }
+
+        savedHolding = updated;
       } else {
-        // New holding
-        await supabase.from('user_stocks').insert({
-          user_id: user.id,
-          stock_id: stock_id,
-          quantity: quantity,
-          total_initial_invested: totalCost,
-          purchase_source: purchase_source,
-          lock_in_days: quantity // Initial lock-in equals quantity bought
+        const { data: inserted, error: insertError } = await supabaseAdmin
+          .from('user_stocks')
+          .insert({
+            user_id: user.id,
+            stock_id: stockId,
+            quantity,
+            total_initial_invested: totalCost,
+            purchase_source: purchaseSource,
+            lock_in_days: quantity
+          })
+          .select()
+          .maybeSingle();
+
+        if (insertError) {
+          await supabaseAdmin.rpc('credit_balance', {
+            p_user_id: user.id,
+            p_amount: totalCost,
+            p_balance_type: purchaseSource
+          });
+
+          throw insertError;
+        }
+
+        savedHolding = inserted;
+      }
+
+      await supabaseAdmin.from('transactions').insert({
+        user_id: user.id,
+        type: 'stock_purchase',
+        amount: totalCost,
+        balance_type: purchaseSource,
+        status: 'completed',
+        description: `Bought ${quantity} shares of ${stock.company_name}`,
+        reference_id: savedHolding?.id || null
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Stock purchased successfully',
+        holding: savedHolding
+      });
+    }
+
+    // -------------------------------------
+    // SELL / CONVERT STOCK
+    // -------------------------------------
+    if (action === 'sell') {
+      const userStockId = body.user_stock_id;
+
+      if (!userStockId) {
+        return res.status(400).json({ error: 'Holding ID is required' });
+      }
+
+      const { data: holding, error: holdingError } = await supabaseAdmin
+        .from('user_stocks')
+        .select(`
+          id,
+          user_id,
+          stock_id,
+          quantity,
+          total_initial_invested,
+          purchase_source,
+          lock_in_days,
+          stocks (
+            company_name,
+            current_price
+          )
+        `)
+        .eq('id', userStockId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (holdingError) throw holdingError;
+      if (!holding) {
+        return res.status(404).json({ error: 'Holding not found' });
+      }
+
+      if (holding.lock_in_days > 0) {
+        return res.status(400).json({
+          error: `This position is locked for ${holding.lock_in_days} more day(s).`
         });
       }
 
-      // Log transaction
-      await supabase.from('transactions').insert({
-        user_id: user.id, type: 'stock_purchase', amount: totalCost, 
-        balance_type: purchase_source, description: `Bought ${quantity} shares`
+      const currentPrice = Number(holding.stocks?.current_price || 0);
+      const payout = Math.round(holding.quantity * currentPrice * 100) / 100;
+      const destinationBalance = holding.purchase_source;
+
+      const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+        p_user_id: user.id,
+        p_amount: payout,
+        p_balance_type: destinationBalance
       });
 
-      return res.status(200).json({ success: true, message: 'Stock purchased successfully' });
-    }
+      if (creditError) throw creditError;
 
-    // --- SELL / CONVERT STOCK ---
-    if (action === 'sell') {
-      const { data: holding } = await supabase.from('user_stocks').select('*, stocks(current_price)').eq('id', user_stock_id).eq('user_id', user.id).single();
-      
-      if (!holding) return res.status(404).json({ error: 'Holding not found' });
-      if (holding.lock_in_days > 0) return res.status(400).json({ error: `Stock is locked for ${holding.lock_in_days} more days` });
+      const { error: deleteError } = await supabaseAdmin
+        .from('user_stocks')
+        .delete()
+        .eq('id', holding.id);
 
-      const payout = holding.quantity * holding.stocks.current_price;
-      const destinationBalance = holding.purchase_source === 'frozen' ? 'frozen_balance' : 'main_balance';
+      if (deleteError) {
+        // Compensate credit if deletion fails
+        await supabaseAdmin.rpc('debit_balance', {
+          p_user_id: user.id,
+          p_amount: payout,
+          p_balance_type: destinationBalance
+        });
 
-      // Credit the correct balance
-      const { data: profile } = await supabase.from('profiles').select(destinationBalance).eq('id', user.id).single();
-      await supabase.from('profiles').update({ [destinationBalance]: profile[destinationBalance] + payout }).eq('id', user.id);
+        throw deleteError;
+      }
 
-      // Delete the holding
-      await supabase.from('user_stocks').delete().eq('id', user_stock_id);
-
-      // Log transaction
-      await supabase.from('transactions').insert({
-        user_id: user.id, type: 'stock_sale', amount: payout, 
-        balance_type: holding.purchase_source, description: `Sold ${holding.quantity} shares`
+      await supabaseAdmin.from('transactions').insert({
+        user_id: user.id,
+        type: 'stock_sale',
+        amount: payout,
+        balance_type: destinationBalance,
+        status: 'completed',
+        description: `Converted ${holding.quantity} shares of ${holding.stocks?.company_name || 'stock'}`,
+        reference_id: holding.id
       });
 
-      return res.status(200).json({ success: true, message: 'Stock converted successfully' });
+      return res.status(200).json({
+        success: true,
+        message: 'Shares converted successfully',
+        payout
+      });
     }
+
+    return res.status(400).json({ error: 'Invalid action' });
+  } catch (err) {
+    console.error('Wealth API error:', err);
+    return res.status(500).json({ error: err.message || 'Server error' });
   }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }
