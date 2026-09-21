@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h1>Stock Market</h1>
+        <p style="color: var(--text-muted);">Buy shares at the current market price.</p>
+      </div>
+
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <div class="badge badge-main">Main: <span id="mainBalanceTop">$0.00</span></div>
+        <div class="badge badge-frozen">Frozen: <span id="frozenBalanceTop">$0.00</span></div>
+      </div>
+    </div>
+
+    <div id="marketGrid" class="market-grid">
+      <!-- Stocks injected here -->
+    </div>
+  </main>
+
+  <!-- Buy Modal -->
+  <div class="modal-overlay" id="buyModal">
+    <div class="modal">
+      <h2 id="buyStockName">Buy Stock</h2>
+
+      <div class="warning-box" id="lockInWarning">
+        Buying shares will add lock-in days based on the quantity purchased.
+      </div>
+
+      <div class="form-group">
+        <label for="quantityInput">Quantity</label>
+        <input type="number" id="quantityInput" class="form-control" min="1" value="1" />
+      </div>
+
+      <div class="form-group">
+        <label>Payment Source</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="purchase_source" value="main" checked />
+            <span>Main Balance</span>
+          </label>
+
+          <label class="radio-option">
+            <input type="radio" name="purchase_source" value="frozen" />
+            <span>Frozen Balance</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <div class="summary-row">
+          <span>Current Price</span>
+          <strong id="summaryPrice">$0.00</strong>
+        </div>
+        <div class="summary-row">
+          <span>Quantity</span>
+          <strong id="summaryQty">1</strong>
+        </div>
+        <div class="summary-row">
+          <span>Total Cost</span>
+          <strong id="summaryTotal">$0.00</strong>
+        </div>
+        <div class="summary-row">
+          <span>New Lock-In Added</span>
+          <strong id="summaryAddedDays">1 day</strong>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeBuyModal()">Cancel</button>
+        <button class="btn btn-primary" id="confirmBuyBtn" onclick="submitBuy()">Confirm Buy</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    let profile = null;
+    let selectedStock = null;
+
+    (async () => {
+      await initUI();
+      await loadProfile();
+      await loadMarket();
+      attachModalListeners();
+    })();
+
+    async function loadProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('main_balance, frozen_balance')
+        .eq('id', user.id)
+        .single();
+
+      profile = data;
+
+      document.getElementById('mainBalanceTop').textContent = formatMoney(profile.main_balance);
+      document.getElementById('frozenBalanceTop').textContent = formatMoney(profile.frozen_balance);
+    }
+
+    async function loadMarket() {
+      const grid = document.getElementById('marketGrid');
+      grid.innerHTML = '<p>Loading stocks...</p>';
+
+      const { data: stocks, error } = await supabase
+        .from('stocks')
+        .select('id, company_name, symbol, current_price, updated_at')
+        .order('company_name', { ascending: true });
+
+      if (error) {
+        grid.innerHTML = `<p style="color: var(--danger);">Error loading stocks: ${error.message}</p>`;
+        return;
+      }
+
+      if (!stocks || stocks.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No stocks available yet.</div>';
+        return;
+      }
+
+      grid.innerHTML = stocks.map(stock => `
+        <div class="stock-card">
+          <h3>${stock.company_name}</h3>
+          <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+          <div class="stock-price">${formatMoney(stock.current_price)}</div>
+          <div class="stock-meta">
+            Last updated: ${stock.updated_at ? new Date(stock.updated_at).toLocaleString() : 'Not updated'}
+          </div>
+          <button class="btn btn-primary" onclick="openBuyModal('${stock.id}')">Buy Shares</button>
+        </div>
+      `).join('');
+    }
+
+    window.openBuyModal = async function(stockId) {
+      const { data: stock } = await supabase
+        .from('stocks')
+        .select('id, company_name, symbol, current_price')
+        .eq('id', stockId)
+        .single();
+
+      if (!stock) return;
+
+      selectedStock = stock;
+
+      document.getElementById('buyStockName').textContent = `Buy ${stock.company_name}`;
+      document.getElementById('quantityInput').value = 1;
+      document.querySelector('input[name="purchase_source"][value="main"]').checked = true;
+
+      updateBuySummary();
+      await updateLockInWarning();
+
+      document.getElementById('buyModal').classList.add('active');
+    };
+
+    window.closeBuyModal = function() {
+      document.getElementById('buyModal').classList.remove('active');
+      selectedStock = null;
+    };
+
+    function attachModalListeners() {
+      const qtyInput = document.getElementById('quantityInput');
+      const sourceRadios = document.querySelectorAll('input[name="purchase_source"]');
+
+      qtyInput.addEventListener('input', () => {
+        updateBuySummary();
+        updateLockInWarning();
+      });
+
+      sourceRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+          updateBuySummary();
+          updateLockInWarning();
+        });
+      });
+
+      document.getElementById('buyModal').addEventListener('click', (e) => {
+        if (e.target.id === 'buyModal') {
+          closeBuyModal();
+        }
+      });
+    }
+
+    function getSelectedSource() {
+      return document.querySelector('input[name="purchase_source"]:checked').value;
+    }
+
+    function getQuantity() {
+      const value = parseInt(document.getElementById('quantityInput').value, 10);
+      return isNaN(value) || value < 1 ? 1 : value;
+    }
+
+    function updateBuySummary() {
+      if (!selectedStock) return;
+
+      const qty = getQuantity();
+      const total = selectedStock.current_price * qty;
+
+      document.getElementById('summaryPrice').textContent = formatMoney(selectedStock.current_price);
+      document.getElementById('summaryQty').textContent = qty;
+      document.getElementById('summaryTotal').textContent = formatMoney(total);
+      document.getElementById('summaryAddedDays').textContent = `${qty} day${qty > 1 ? 's' : ''}`;
+
+      checkAffordability(total);
+    }
+
+    function checkAffordability(total) {
+      if (!profile || !selectedStock) return;
+
+      const source = getSelectedSource();
+      const balance = source === 'frozen'
+        ? parseFloat(profile.frozen_balance)
+        : parseFloat(profile.main_balance);
+
+      const btn = document.getElementById('confirmBuyBtn');
+
+      if (total > balance) {
+        btn.disabled = true;
+        btn.textContent = 'Insufficient Balance';
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Buy';
+      }
+    }
+
+    async function updateLockInWarning() {
+      if (!selectedStock) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const source = getSelectedSource();
+      const qty = getQuantity();
+
+      const { data: existing } = await supabase
+        .from('user_stocks')
+        .select('quantity, lock_in_days')
+        .eq('user_id', user.id)
+        .eq('stock_id', selectedStock.id)
+        .eq('purchase_source', source)
+        .maybeSingle();
+
+      const currentQty = existing?.quantity || 0;
+      const currentLockIn = existing?.lock_in_days || 0;
+      const newLockIn = currentLockIn + qty;
+
+      const warning = document.getElementById('lockInWarning');
+
+      if (currentQty > 0) {
+        warning.innerHTML = `
+          You already own <strong>${currentQty}</strong> shares of this stock using 
+          <strong>${source === 'frozen' ? 'Frozen Balance' : 'Main Balance'}</strong>.<br><br>
+          Current lock-in: <strong>${currentLockIn} day(s)</strong><br>
+          Buying <strong>${qty}</strong> more shares will increase total lock-in to 
+          <strong>${newLockIn} day(s)</strong>.
+        `;
+      } else {
+        warning.innerHTML = `
+          Buying <strong>${qty}</strong> share(s) will create a lock-in period of 
+          <strong>${qty} day(s)</strong>. You can convert only after the lock-in expires.
+        `;
+      }
+    }
+
+    window.submitBuy = async function() {
+      if (!selectedStock) return;
+
+      const btn = document.getElementById('confirmBuyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('User not authenticated.');
+
+        const quantity = getQuantity();
+        const purchase_source = getSelectedSource();
+
+        const res = await fetch('/api/wealth.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'buy',
+            stock_id: selectedStock.id,
+            quantity,
+            purchase_source
+          })
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Purchase failed.');
+        }
+
+        alert('Stock purchased successfully!');
+        closeBuyModal();
+        await loadProfile();
+        await loadMarket();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Buy';
+      }
+    };
+
+    function formatMoney(value) {
+      return `$${parseFloat(value || 0).toFixed(2)}`;
+    }
+  </script>
+</body>
+</html>
