@@ -14,7 +14,7 @@
     <div class="page-header">
       <div>
         <h1>Deposit Funds</h1>
-        <p>Submit a deposit request. Admin will approve it and credit your Main Balance.</p>
+        <p>Submit a deposit request using the name on your deposit. Admin will approve and credit your Main Balance.</p>
       </div>
       <div class="balance-pill">
         Main Balance: <span id="mainBalance">$0.00</span>
@@ -43,9 +43,17 @@
         </div>
 
         <div class="form-group">
-          <label for="reference">Transaction Reference / Note</label>
-          <input type="text" id="reference" class="form-control" placeholder="e.g. GTB-8837261" />
-          <div class="input-hint">Optional but helpful for faster approval.</div>
+          <label for="depositorName">Name on Deposit</label>
+          <input
+            type="text"
+            id="depositorName"
+            class="form-control"
+            placeholder="Enter the account name used for the deposit"
+            required
+          />
+          <div class="input-hint">
+            This should match the name on your bank account, wallet, or payment source.
+          </div>
         </div>
 
         <button type="submit" class="btn btn-primary" id="depositBtn">
@@ -90,6 +98,15 @@
       return `<span class="status-badge status-${status}">${status}</span>`;
     }
 
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     async function loadProfile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -119,7 +136,7 @@
         .limit(20);
 
       if (error) {
-        container.innerHTML = `<p style="color: var(--danger);">Error loading requests: ${error.message}</p>`;
+        container.innerHTML = `<p style="color: var(--danger);">Error loading requests: ${escapeHtml(error.message)}</p>`;
         return;
       }
 
@@ -128,22 +145,31 @@
         return;
       }
 
-      container.innerHTML = requests.map(r => `
-        <div class="request-item">
-          <div class="left">
-            <div class="title">Deposit Request</div>
-            <div class="meta">
-              ${r.payment_method || 'Payment method'} • ${new Date(r.created_at).toLocaleString()}
-            </div>
-            ${r.reference ? `<div class="meta">Ref: ${r.reference}</div>` : ''}
-          </div>
+      container.innerHTML = requests.map(r => {
+        const depositorName =
+          r.depositor_name ||
+          r.destination_details?.depositor_name ||
+          'Not provided';
 
-          <div style="text-align: right;">
-            <div class="amount credit">+${formatMoney(r.amount)}</div>
-            <div style="margin-top: 8px;">${statusBadge(r.status)}</div>
+        return `
+          <div class="request-item">
+            <div class="left">
+              <div class="title">Deposit Request</div>
+              <div class="meta">
+                ${escapeHtml(r.payment_method || 'Payment method')} • ${new Date(r.created_at).toLocaleString()}
+              </div>
+              <div class="meta">
+                Name on deposit: <strong>${escapeHtml(depositorName)}</strong>
+              </div>
+            </div>
+
+            <div style="text-align: right;">
+              <div class="amount credit">+${formatMoney(r.amount)}</div>
+              <div style="margin-top: 8px;">${statusBadge(r.status)}</div>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     form.addEventListener('submit', async (e) => {
@@ -152,10 +178,20 @@
 
       const amount = Number.parseFloat(document.getElementById('amount').value);
       const payment_method = document.getElementById('paymentMethod').value;
-      const reference = document.getElementById('reference').value.trim();
+      const depositor_name = document.getElementById('depositorName').value.trim();
 
       if (!Number.isFinite(amount) || amount <= 0) {
         showAlert('Enter a valid deposit amount.');
+        return;
+      }
+
+      if (!payment_method) {
+        showAlert('Select a payment method.');
+        return;
+      }
+
+      if (!depositor_name) {
+        showAlert('Name on deposit is required.');
         return;
       }
 
@@ -176,7 +212,7 @@
             action: 'deposit_request',
             amount,
             payment_method,
-            reference
+            depositor_name
           })
         });
 
