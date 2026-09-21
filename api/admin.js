@@ -1,63 +1,224 @@
-import { supabase } from '../../lib/supabase';
+// api/admin.js
+import {
+  supabaseAdmin,
+  requireAdmin,
+  getBody,
+  parseAmount
+} from '../lib/supabase-admin.js';
+
+import { awardReferralBonus } from './referral.js';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  // 1. Verify Admin Role
-  const authHeader = req.headers.authorization;
-  const { data: { user } } = await supabase.auth.getUser(authHeader?.split(' ')[1]);
-  if (!user) return res.status(401).json({ error: 'Unauthenticated' });
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (!profile || profile.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-
-  const { action, stock_id, new_price, target_user_id, credit_amount } = req.body;
-
-  // ==========================================
-  // 2. UPDATE STOCK PRICES (Midnight Market Update)
-  // ==========================================
-  if (action === 'update_price') {
-    const { error } = await supabase
-      .from('stocks')
-      .update({ current_price: new_price, updated_at: new Date().toISOString() })
-      .eq('id', stock_id);
-
-    if (error) return res.status(500).json({ error: error.message });
-    
-    return res.status(200).json({ success: true, message: 'Stock price updated' });
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
 
-  // ==========================================
-  // 3. CREDIT PROMOTERS (Frozen Balance)
-  // ==========================================
-  if (action === 'credit_frozen') {
-    // Fetch current frozen balance
-    const { data: targetProfile } = await supabase
-      .from('profiles')
-      .select('frozen_balance')
-      .eq('id', target_user_id)
-      .single();
-
-    if (!targetProfile) return res.status(404).json({ error: 'User not found' });
-
-    // Add to frozen balance
-    const newFrozenBalance = parseFloat(targetProfile.frozen_balance) + parseFloat(credit_amount);
-    await supabase
-      .from('profiles')
-      .update({ frozen_balance: newFrozenBalance })
-      .eq('id', target_user_id);
-
-    // Log the transaction
-    await supabase.from('transactions').insert({
-      user_id: target_user_id,
-      type: 'frozen_credit',
-      amount: credit_amount,
-      balance_type: 'frozen',
-      description: 'Promoter bonus credited by Admin'
-    });
-
-    return res.status(200).json({ success: true, message: 'Frozen balance credited successfully' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  return res.status(400).json({ error: 'Invalid action' });
+  try {
+    const adminCheck = await requireAdmin(req);
+    if (!adminCheck.ok) {
+      return res.status(adminCheck.status).json({ error: adminCheck.error });
+    }
+
+    const body = getBody(req);
+    const action = body.action;
+
+    // -------------------------------------
+    // UPDATE STOCK PRICE
+    // -------------------------------------
+    if (action === 'update_price') {
+      const stockId = body.stock_id;
+      const newPrice = parseAmount(body.new_price);
+
+      if (!stockId) {
+        return res.status(400).json({ error: 'Stock ID is required' });
+      }
+
+      if (!newPrice) {
+        return res.status(400).json({ error: 'Valid new price is required' });
+      }
+
+      const { error } = await supabaseAdmin
+        .from('stocks')
+        .update({
+          current_price: newPrice,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', stockId);
+
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, message: 'Stock price updated' });
+    }
+
+    // -------------------------------------
+    // CREDIT FROZEN BALANCE
+    // -------------------------------------
+    if (action === 'credit_frozen') {
+      const targetUserId = body.target_user_id;
+      const amount = parseAmount(body.credit_amount);
+
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'Target user ID is required' });
+      }
+
+      if (!amount) {
+        return res.status(400).json({ error: 'Valid credit amount is required' });
+      }
+
+      const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+        p_user_id: targetUserId,
+        p_amount: amount,
+        p_balance_type: 'frozen'
+      });
+
+      if (creditError) throw creditError;
+
+      await supabaseAdmin.from('transactions').insert({
+        user_id: targetUserId,
+        type: 'frozen_credit',
+        amount,
+        balance_type: 'frozen',
+        status: 'completed',
+        description: 'Promoter frozen balance credited by admin'
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Frozen balance credited successfully'
+      });
+    }
+
+    // -------------------------------------
+    // APPROVE FINANCIAL REQUEST
+    // -------------------------------------
+    if (action === 'approve_financial_request') {
+      const requestId = body.request_id;
+      const adminNote = (body.admin_note || '').trim();
+
+      if (!requestId) {
+        return res.status(400).json({ error: 'Request ID is required' });
+      }
+
+      const { data: request, error: requestError } = await supabaseAdmin
+        .from('financial_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
+
+      if (requestError) throw requestError;
+
+      if (!request) {
+        return res.status(404).json({ error: 'Request not found' });
+      }
+
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'Request is not pending' });
+      }
+
+      if (request.type === 'deposit') {
+        const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+          p_user_id: request.user_id,
+          p_amount: Number(request.amount),
+          p_balance_type: 'main'
+        });
+
+        if (creditError) throw creditError;
+
+        await supabaseAdmin
+          .from('financial_requests')
+          .update({
+            status: 'approved',
+            admin_note: adminNote || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', request.id);
+
+        await awardReferralBonus(request.id, request.user_id, request.amount);
+
+        return res.status(200).json({
+          success: true,
+          message: 'Deposit approved'
+        });
+      }
+
+      if (request.type === 'withdrawal') {
+        await supabaseAdmin
+          .from('financial_requests')
+          .update({
+            status: 'approved',
+            admin_note: adminNote || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', request.id);
+
+        return res.status(200).json({
+          success: true,
+          message: 'Withdrawal approved'
+        });
+      }
+
+      return res.status(400).json({ error: 'Invalid request type' });
+    }
+
+    // -------------------------------------
+    // REJECT FINANCIAL REQUEST
+    // -------------------------------------
+    if (action === 'reject_financial_request') {
+      const requestId = body.request_id;
+      const adminNote = (body.admin_note || '').trim();
+
+      if (!requestId) {
+        return res.status(400).json({ error: 'Request ID is required' });
+      }
+
+      const { data: request, error: requestError } = await supabaseAdmin
+        .from('financial_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
+
+      if (requestError) throw requestError;
+
+      if (!request) {
+        return res.status(404).json({ error: 'Request not found' });
+      }
+
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'Request is not pending' });
+      }
+
+      if (request.type === 'withdrawal') {
+        const { error: refundError } = await supabaseAdmin.rpc('credit_balance', {
+          p_user_id: request.user_id,
+          p_amount: Number(request.amount),
+          p_balance_type: 'main'
+        });
+
+        if (refundError) throw refundError;
+      }
+
+      await supabaseAdmin
+        .from('financial_requests')
+        .update({
+          status: 'rejected',
+          admin_note: adminNote || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', request.id);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Request rejected'
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid action' });
+  } catch (err) {
+    console.error('Admin API error:', err);
+    return res.status(500).json({ error: err.message || 'Server error' });
+  }
 }
