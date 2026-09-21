@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Withdraw | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div class="page-header">
+      <div>
+        <h1>Withdraw Funds</h1>
+        <p>Withdrawals are deducted from Main Balance and processed after admin approval.</p>
+      </div>
+      <div class="balance-pill">
+        Available: <span id="mainBalance">$0.00</span>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div id="withdrawAlert" class="alert error"></div>
+
+      <form id="withdrawForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="amount">Amount</label>
+            <input type="number" id="amount" class="form-control" min="1" step="0.01" required />
+            <div class="input-hint">Maximum: <span id="maxAmount">$0.00</span></div>
+          </div>
+
+          <div class="form-group">
+            <label for="paymentMethod">Payout Method</label>
+            <select id="paymentMethod" class="form-control" required>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="usdt_trc20">USDT TRC20</option>
+              <option value="usdt_erc20">USDT ERC20</option>
+              <option value="bitcoin">Bitcoin</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="accountName">Account Name / Wallet Owner</label>
+            <input type="text" id="accountName" class="form-control" required />
+          </div>
+
+          <div class="form-group">
+            <label for="accountNumber">Account Number / Wallet Address</label>
+            <input type="text" id="accountNumber" class="form-control" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="bankName">Bank Name / Network</label>
+          <input type="text" id="bankName" class="form-control" placeholder="e.g. GTBank / TRON" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="withdrawBtn">
+          Submit Withdrawal Request
+        </button>
+      </form>
+    </div>
+
+    <h2 style="margin-top: 30px; margin-bottom: 8px;">Recent Withdrawal Requests</h2>
+    <div id="withdrawRequests" class="request-list">
+      <p>Loading...</p>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initUI();
+
+    let mainBalance = 0;
+
+    const alertBox = document.getElementById('withdrawAlert');
+    const form = document.getElementById('withdrawForm');
+    const submitBtn = document.getElementById('withdrawBtn');
+    const amountInput = document.getElementById('amount');
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function hideAlert() {
+      alertBox.style.display = 'none';
+    }
+
+    function formatMoney(value) {
+      return `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    function statusBadge(status) {
+      return `<span class="status-badge status-${status}">${status}</span>`;
+    }
+
+    async function loadProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('main_balance')
+        .eq('id', user.id)
+        .single();
+
+      mainBalance = Number(profile?.main_balance || 0);
+
+      document.getElementById('mainBalance').textContent = formatMoney(mainBalance);
+      document.getElementById('maxAmount').textContent = formatMoney(mainBalance);
+    }
+
+    async function loadRequests() {
+      const container = document.getElementById('withdrawRequests');
+      container.innerHTML = '<p>Loading...</p>';
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: requests, error } = await supabase
+        .from('financial_requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('type', 'withdrawal')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        container.innerHTML = `<p style="color: var(--danger);">Error loading requests: ${error.message}</p>`;
+        return;
+      }
+
+      if (!requests || requests.length === 0) {
+        container.innerHTML = '<div class="empty-state">No withdrawal requests yet.</div>';
+        return;
+      }
+
+      container.innerHTML = requests.map(r => `
+        <div class="request-item">
+          <div class="left">
+            <div class="title">Withdrawal Request</div>
+            <div class="meta">
+              ${r.payment_method || 'Payout'} • ${new Date(r.created_at).toLocaleString()}
+            </div>
+            ${r.destination_details?.account_number ? `<div class="meta">To: ${r.destination_details.account_number}</div>` : ''}
+          </div>
+
+          <div style="text-align: right;">
+            <div class="amount debit">-${formatMoney(r.amount)}</div>
+            <div style="margin-top: 8px;">${statusBadge(r.status)}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    amountInput.addEventListener('input', () => {
+      const value = Number.parseFloat(amountInput.value || 0);
+      if (value > mainBalance) {
+        showAlert('Amount exceeds available Main Balance.');
+      } else {
+        hideAlert();
+      }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const amount = Number.parseFloat(amountInput.value);
+      const payment_method = document.getElementById('paymentMethod').value;
+      const account_name = document.getElementById('accountName').value.trim();
+      const account_number = document.getElementById('accountNumber').value.trim();
+      const bank_name = document.getElementById('bankName').value.trim();
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        showAlert('Enter a valid withdrawal amount.');
+        return;
+      }
+
+      if (amount > mainBalance) {
+        showAlert('Insufficient Main Balance.');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/finance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'withdraw_request',
+            amount,
+            destination_details: {
+              payment_method,
+              account_name,
+              account_number,
+              bank_name
+            }
+          })
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to submit withdrawal request.');
+        }
+
+        showAlert('Withdrawal request submitted successfully.', 'success');
+        form.reset();
+        await loadProfile();
+        await loadRequests();
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Withdrawal Request';
+      }
+    });
+
+    await loadProfile();
+    await loadRequests();
+  </script>
+</body>
+</html>
