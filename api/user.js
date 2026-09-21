@@ -122,18 +122,35 @@ export default async function handler(req, res) {
             created_at: t.created_at
           }));
 
-        const mappedRequests = (requests || []).map(r => ({
-          id: r.id,
-          source: 'request',
-          category: r.type,
-          label: r.type === 'deposit' ? 'Deposit Request' : 'Withdrawal Request',
-          amount: Number(r.amount),
-          direction: r.type === 'deposit' ? 'credit' : 'debit',
-          balance_type: 'main',
-          status: r.status,
-          description: r.payment_method || '',
-          created_at: r.created_at
-        }));
+        const mappedRequests = (requests || []).map(r => {
+  let description = '';
+
+  if (r.type === 'deposit') {
+    const depositorName =
+      r.depositor_name ||
+      r.destination_details?.depositor_name ||
+      '';
+
+    description = depositorName
+      ? `Name on deposit: ${depositorName}`
+      : r.payment_method || '';
+  } else {
+    description = r.payment_method || '';
+  }
+
+  return {
+    id: r.id,
+    source: 'request',
+    category: r.type,
+    label: r.type === 'deposit' ? 'Deposit Request' : 'Withdrawal Request',
+    amount: Number(r.amount),
+    direction: r.type === 'deposit' ? 'credit' : 'debit',
+    balance_type: 'main',
+    status: r.status,
+    description,
+    created_at: r.created_at
+  };
+});
 
         const history = [...mappedTransactions, ...mappedRequests].sort(
           (a, b) => new Date(b.created_at) - new Date(a.created_at)
