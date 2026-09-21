@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FAQ | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div class="page-header">
+      <div>
+        <h1>Frequently Asked Questions</h1>
+        <p>Answers to common questions about investing, balances, and rewards.</p>
+      </div>
+    </div>
+
+    <div class="faq-list">
+      <details class="faq-item" open>
+        <summary>How does stock pricing work?</summary>
+        <div class="faq-answer">
+          Share prices are updated by the platform admin at midnight each day. When you buy, you buy at the current displayed price. When you convert, you receive the current price at that moment.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>What is the lock-in period?</summary>
+        <div class="faq-answer">
+          The lock-in period is based on the number of shares you buy. If you buy 5 shares, that position is locked for 5 days. If you later buy 3 more shares of the same stock using the same balance source, the lock-in becomes additive.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>How does the 5% daily income work?</summary>
+        <div class="faq-answer">
+          You earn 5% daily based on your initial invested amount. This is credited to your Main Balance at midnight every day as long as you hold active positions.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>What is Frozen Balance?</summary>
+        <div class="faq-answer">
+          Frozen Balance is a special balance credited by admin, usually for promoters. It can be used to buy stocks, but when those stocks are converted, the payout returns to Frozen Balance instead of Main Balance.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>Can I withdraw Frozen Balance?</summary>
+        <div class="faq-answer">
+          No. Frozen Balance is designed for investment activity only. It cannot be withdrawn directly.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>How does the referral bonus work?</summary>
+        <div class="faq-answer">
+          When someone registers using your referral code and makes an approved deposit, you receive 10% of that deposit amount as cashback in your Main Balance.
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>Can I mix Main Balance and Frozen Balance in one purchase?</summary>
+        <div class="faq-answer">
+          No. Each stock purchase must use either Main Balance or Frozen Balance. This keeps the conversion payout routing clean and accurate.
+        </div>
+      </details>
+    </div>
+
+    <div class="section-card" style="margin-top: 24px;">
+      <h2>Still need help?</h2>
+      <p style="color: var(--text-muted); margin-bottom: 16px;">
+        Open a support ticket and our team will assist you.
+      </p>
+      <a href="/support.html" class="btn btn-primary">Contact Support</a>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+
+    await initUI();
+  </script>
+</body>
+</html>
