@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/wealth?action=midnight-cron",
+      "path": "/api/wealth",
       "schedule": "0 0 * * *"
     }
   ]
