@@ -109,19 +109,25 @@
     }
 
     function getRequestDetails(r) {
-      if (r.type === 'deposit') {
-        return `
-          Method: ${r.payment_method || '-'}<br>
-          Ref: ${r.reference || '-'}
-        `;
-      }
+  if (r.type === 'deposit') {
+    const depositorName =
+      r.depositor_name ||
+      r.destination_details?.depositor_name ||
+      '-';
 
-      const d = r.destination_details || {};
-      return `
-        Method: ${d.payment_method || r.payment_method || '-'}<br>
-        Account: ${d.account_name || '-'}<br>
-        Number/Wallet: ${d.account_number || '-'}
-      `;
+    return `
+      Method: ${escapeHtml(r.payment_method || '-')}<br>
+      Name on deposit: ${escapeHtml(depositorName)}
+    `;
+  }
+
+  const d = r.destination_details || {};
+
+  return `
+    Method: ${escapeHtml(d.payment_method || r.payment_method || '-')}<br>
+    Account: ${escapeHtml(d.account_name || '-')}<br>
+    Number/Wallet: ${escapeHtml(d.account_number || '-')}
+  `;
     }
 
     window.loadRequests = async function() {
