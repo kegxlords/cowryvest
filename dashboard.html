@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Cowryvest</title>
+  <!-- 1. Link the Global CSS -->
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+
+  <!-- 2. Placeholders for Shared Components -->
+  <div id="header-placeholder"></div>
+
+  <!-- 3. Page Specific Content -->
+  <main class="container" style="margin-top: 30px;">
+    <h1 style="margin-bottom: 20px;">Welcome back, <span id="userName">Investor</span></h1>
+
+    <!-- Balance Cards -->
+    <div class="grid-3">
+      <div class="card main-balance">
+        <h3>Main Balance (Withdrawable)</h3>
+        <div class="amount" id="mainBal">$0.00</div>
+      </div>
+      <div class="card frozen-balance">
+        <h3>Frozen Balance (Promoter)</h3>
+        <div class="amount" id="frozenBal">$0.00</div>
+      </div>
+      <div class="card portfolio">
+        <h3>Total Portfolio Value</h3>
+        <div class="amount" id="portfolioVal">$0.00</div>
+      </div>
+    </div>
+
+    <!-- Daily Yield Preview -->
+    <div class="card" style="background: #ecfdf5; border: 1px solid #a7f3d0; margin-bottom: 30px;">
+      <h3 style="color: #065f46;">Pending Daily Yield (Credited at Midnight)</h3>
+      <div class="amount" style="color: #047857;" id="pendingYield">$0.00</div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <h3>Quick Actions</h3>
+      <div style="margin-top: 15px; display: flex; gap: 10px;">
+        <a href="/market.html" class="btn btn-primary">Buy Stocks</a>
+        <a href="/investments.html" class="btn btn-primary" style="background: var(--frozen);">View Portfolio</a>
+        <a href="/deposit.html" class="btn btn-primary" style="background: var(--success);">Deposit Funds</a>
+      </div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <!-- 4. Page Specific Logic -->
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    // Initialize shared header/footer and auth check
+    initUI();
+
+    // Fetch Dashboard Data
+    async function loadDashboard() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Get Profile (Balances)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, main_balance, frozen_balance')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        document.getElementById('userName').innerText = profile.full_name || 'Investor';
+        document.getElementById('mainBal').innerText = `$${parseFloat(profile.main_balance).toFixed(2)}`;
+        document.getElementById('frozenBal').innerText = `$${parseFloat(profile.frozen_balance).toFixed(2)}`;
+      }
+
+      // 2. Get User Stocks (Portfolio Value & Pending Yield)
+      const { data: stocks } = await supabase
+        .from('user_stocks')
+        .select('*, stocks(current_price)')
+        .eq('user_id', user.id);
+
+      let totalPortfolio = 0;
+      let totalPendingYield = 0;
+
+      if (stocks) {
+        stocks.forEach(s => {
+          // Current Market Value
+          totalPortfolio += s.quantity * s.stocks.current_price;
+          
+          // 5% of initial invested amount
+          totalPendingYield += s.total_initial_invested * 0.05;
+        });
+      }
+
+      document.getElementById('portfolioVal').innerText = `$${totalPortfolio.toFixed(2)}`;
+      document.getElementById('pendingYield').innerText = `$${totalPendingYield.toFixed(2)}`;
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
