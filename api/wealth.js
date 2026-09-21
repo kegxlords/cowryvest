@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     // MIDNIGHT CRON
     // GET /api/wealth?action=midnight-cron
     // =====================================
-    if (req.query.action === 'midnight-cron') {
+    if (req.method === 'GET') {
       const authHeader = req.headers.authorization;
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized cron access' });
