@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Referrals | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <section class="referral-hero">
+      <h1>Invite & Earn 10%</h1>
+      <p>Earn 10% cashback whenever someone you refer makes an approved deposit.</p>
+
+      <div class="copy-box">
+        <input type="text" id="referralLink" readonly placeholder="Loading referral link..." />
+        <button class="btn btn-light" id="copyBtn">Copy Link</button>
+      </div>
+    </section>
+
+    <div class="referral-stats">
+      <div class="referral-stat">
+        <h3>Total Referrals</h3>
+        <div class="value" id="totalReferrals">0</div>
+      </div>
+
+      <div class="referral-stat">
+        <h3>Approved Deposits</h3>
+        <div class="value" id="approvedDeposits">0</div>
+      </div>
+
+      <div class="referral-stat">
+        <h3>Referred Deposits</h3>
+        <div class="value" id="totalDepositAmount">$0.00</div>
+      </div>
+
+      <div class="referral-stat">
+        <h3>Bonus Earned</h3>
+        <div class="value credit" id="totalBonusEarned">$0.00</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Referred Users</h3>
+
+      <div class="table-responsive">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody id="referralTableBody">
+            <tr>
+              <td colspan="2" class="empty-state">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initUI();
+
+    function formatMoney(value) {
+      return `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    async function loadReferralDashboard() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch('/api/referral?action=dashboard', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(result.error || 'Failed to load referral data.');
+        return;
+      }
+
+      document.getElementById('referralLink').value = result.referral_link || '';
+      document.getElementById('totalReferrals').textContent = result.summary.total_referrals;
+      document.getElementById('approvedDeposits').textContent = result.summary.approved_deposits;
+      document.getElementById('totalDepositAmount').textContent = formatMoney(result.summary.total_deposit_amount);
+      document.getElementById('totalBonusEarned').textContent = formatMoney(result.summary.total_bonus_earned);
+
+      const tbody = document.getElementById('referralTableBody');
+
+      if (!result.referrals || result.referrals.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No referrals yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = result.referrals.map(r => `
+        <tr>
+          <td><strong>${r.full_name || 'User'}</strong></td>
+          <td>${new Date(r.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const input = document.getElementById('referralLink');
+      if (!input.value) return;
+
+      try {
+        await navigator.clipboard.writeText(input.value);
+        alert('Referral link copied!');
+      } catch {
+        input.select();
+        document.execCommand('copy');
+        alert('Referral link copied!');
+      }
+    });
+
+    await loadReferralDashboard();
+  </script>
+</body>
+</html>
