@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Settings | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div class="page-header">
+      <div>
+        <h1>Account Settings</h1>
+        <p>Update your profile details and password.</p>
+      </div>
+      <a href="/profile.html" class="btn btn-secondary">Back to Profile</a>
+    </div>
+
+    <div id="settingsAlert" class="alert error"></div>
+
+    <div class="settings-grid">
+      <section class="section-card">
+        <h2>Profile Information</h2>
+
+        <form id="profileForm">
+          <div class="form-group">
+            <label for="fullName">Full Name</label>
+            <input type="text" id="fullName" class="form-control" required />
+          </div>
+
+          <div class="form-group">
+            <label for="phone">Phone</label>
+            <input type="text" id="phone" class="form-control" placeholder="Optional" />
+          </div>
+
+          <div class="form-group">
+            <label for="avatarUrl">Avatar URL</label>
+            <input type="url" id="avatarUrl" class="form-control" placeholder="https://..." />
+            <div class="input-hint">Paste a public image URL for your profile photo.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="saveProfileBtn">
+            Save Changes
+          </button>
+        </form>
+      </section>
+
+      <section class="section-card">
+        <h2>Change Password</h2>
+
+        <form id="passwordForm">
+          <div class="form-group">
+            <label for="newPassword">New Password</label>
+            <input type="password" id="newPassword" class="form-control" minlength="8" required />
+          </div>
+
+          <div class="form-group">
+            <label for="confirmPassword">Confirm New Password</label>
+            <input type="password" id="confirmPassword" class="form-control" minlength="8" required />
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="changePasswordBtn">
+            Update Password
+          </button>
+        </form>
+      </section>
+
+      <section class="section-card danger-zone">
+        <h2>Session</h2>
+        <p style="color: var(--text-muted); margin-bottom: 16px;">
+          Sign out of Cowryvest on this device.
+        </p>
+
+        <button class="btn btn-danger" id="logoutBtn">
+          Logout
+        </button>
+      </section>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initUI();
+
+    const alertBox = document.getElementById('settingsAlert');
+    const profileForm = document.getElementById('profileForm');
+    const passwordForm = document.getElementById('passwordForm');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function hideAlert() {
+      alertBox.style.display = 'none';
+    }
+
+    async function loadProfile() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/user?action=profile', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load profile.');
+        }
+
+        const profile = result.profile || {};
+
+        document.getElementById('fullName').value = profile.full_name || '';
+        document.getElementById('phone').value = profile.phone || '';
+        document.getElementById('avatarUrl').value = profile.avatar_url || '';
+      } catch (err) {
+        showAlert(err.message);
+      }
+    }
+
+    profileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const full_name = document.getElementById('fullName').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const avatar_url = document.getElementById('avatarUrl').value.trim();
+
+      if (!full_name) {
+        showAlert('Full name is required.');
+        return;
+      }
+
+      saveProfileBtn.disabled = true;
+      saveProfileBtn.textContent = 'Saving...';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'update_profile',
+            full_name,
+            phone,
+            avatar_url
+          })
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to update profile.');
+        }
+
+        showAlert('Profile updated successfully.', 'success');
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        saveProfileBtn.disabled = false;
+        saveProfileBtn.textContent = 'Save Changes';
+      }
+    });
+
+    passwordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (newPassword.length < 8) {
+        showAlert('Password must be at least 8 characters.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showAlert('Passwords do not match.');
+        return;
+      }
+
+      changePasswordBtn.disabled = true;
+      changePasswordBtn.textContent = 'Updating...';
+
+      try {
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+
+        if (error) throw error;
+
+        showAlert('Password updated successfully.', 'success');
+        passwordForm.reset();
+      } catch (err) {
+        showAlert(err.message);
+      } finally {
+        changePasswordBtn.disabled = false;
+        changePasswordBtn.textContent = 'Update Password';
+      }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    });
+
+    await loadProfile();
+  </script>
+</body>
+</html>
