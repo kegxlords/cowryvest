@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Admin Dashboard | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container" style="margin-top: 30px;">
+    <div class="page-header">
+      <div>
+        <h1>Admin Dashboard</h1>
+        <p>Platform overview and quick management links.</p>
+      </div>
+    </div>
+
+    <nav class="admin-subnav">
+      <a href="/admin/index.html" class="active">Overview</a>
+      <a href="/admin/stocks.html">Stocks</a>
+      <a href="/admin/promoters.html">Promoters</a>
+      <a href="/admin/requests.html">Requests</a>
+    </nav>
+
+    <div id="adminAlert" class="alert error"></div>
+
+    <div class="stat-grid" id="statsGrid">
+      <div class="stat-card blue">
+        <h3>Total Users</h3>
+        <div class="value" id="statUsers">--</div>
+      </div>
+
+      <div class="stat-card blue">
+        <h3>Total Stocks</h3>
+        <div class="value" id="statStocks">--</div>
+      </div>
+
+      <div class="stat-card orange">
+        <h3>Pending Deposits</h3>
+        <div class="value" id="statPendingDeposits">--</div>
+      </div>
+
+      <div class="stat-card orange">
+        <h3>Pending Withdrawals</h3>
+        <div class="value" id="statPendingWithdrawals">--</div>
+      </div>
+
+      <div class="stat-card green">
+        <h3>Main Balance Total</h3>
+        <div class="value" id="statMainTotal">--</div>
+      </div>
+
+      <div class="stat-card indigo">
+        <h3>Frozen Balance Total</h3>
+        <div class="value" id="statFrozenTotal">--</div>
+      </div>
+
+      <div class="stat-card green">
+        <h3>Active Holdings</h3>
+        <div class="value" id="statHoldings">--</div>
+      </div>
+
+      <div class="stat-card blue">
+        <h3>Portfolio Value</h3>
+        <div class="value" id="statPortfolio">--</div>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <h2>Quick Actions</h2>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="/admin/stocks.html" class="btn btn-primary">Update Stock Prices</a>
+        <a href="/admin/requests.html" class="btn btn-success">Approve Requests</a>
+        <a href="/admin/promoters.html" class="btn btn-dark">Credit Promoters</a>
+      </div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initAdminUI } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+
+    await initAdminUI();
+
+    const alertBox = document.getElementById('adminAlert');
+
+    function showAlert(message, type = 'error') {
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type}`;
+      alertBox.style.display = 'block';
+    }
+
+    function formatMoney(value) {
+      return `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    async function loadStats() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/admin?action=stats', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load stats.');
+        }
+
+        const s = result.stats || {};
+
+        document.getElementById('statUsers').textContent = s.users ?? 0;
+        document.getElementById('statStocks').textContent = s.stocks ?? 0;
+        document.getElementById('statPendingDeposits').textContent = s.pending_deposits ?? 0;
+        document.getElementById('statPendingWithdrawals').textContent = s.pending_withdrawals ?? 0;
+        document.getElementById('statMainTotal').textContent = formatMoney(s.main_balance_total);
+        document.getElementById('statFrozenTotal').textContent = formatMoney(s.frozen_balance_total);
+        document.getElementById('statHoldings').textContent = s.active_holdings ?? 0;
+        document.getElementById('statPortfolio').textContent = formatMoney(s.portfolio_value_total);
+      } catch (err) {
+        showAlert(err.message);
+      }
+    }
+
+    await loadStats();
+  </script>
+</body>
+</html>
