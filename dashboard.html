@@ -237,22 +237,27 @@
     }
 
     async function loadDashboard() {
-      try {
-        const [profileRes, holdingsRes, historyRes] = await Promise.all([
-          apiGet('/api/user?action=profile'),
-          apiGet('/api/wealth?action=holdings'),
-          apiGet('/api/user?action=history')
-        ]);
+      const [profileRes, holdingsRes, historyRes] = await Promise.allSettled([
+        apiGet('/api/user?action=profile'),
+        apiGet('/api/wealth?action=holdings'),
+        apiGet('/api/user?action=history')
+      ]);
 
-        renderDashboard(
-          profileRes.profile,
-          holdingsRes.holdings || [],
-          historyRes.history || []
-        );
-      } catch (err) {
+      const profile = profileRes.status === 'fulfilled' ? profileRes.value.profile : null;
+      const holdings = holdingsRes.status === 'fulfilled' ? (holdingsRes.value.holdings || []) : [];
+      const history = historyRes.status === 'fulfilled' ? (historyRes.value.history || []) : [];
+
+      if (holdingsRes.status === 'rejected') {
         document.getElementById('holdingsList').innerHTML =
-          `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
+          `<div class="mini-empty">${escapeHtml(holdingsRes.reason.message)}</div>`;
       }
+
+      if (historyRes.status === 'rejected') {
+        document.getElementById('activityList').innerHTML =
+          `<div class="mini-empty">${escapeHtml(historyRes.reason.message)}</div>`;
+      }
+
+      renderDashboard(profile, holdings, history);
     }
 
     function renderDashboard(profile, holdings, history) {
