@@ -10,12 +10,13 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="container" style="margin-top: 30px;">
-    <div class="page-header">
+  <main class="container page-container">
+    <div class="page-hero">
       <div>
         <h1>Manage Stocks</h1>
-        <p>Update current share prices. Users buy and convert based on these prices.</p>
+        <p>Update share prices. Users buy and convert at these prices.</p>
       </div>
+      <span class="chip frozen">Market Control</span>
     </div>
 
     <nav class="admin-subnav">
@@ -27,14 +28,16 @@
 
     <div id="adminAlert" class="alert error"></div>
 
-    <section class="admin-panel">
-      <h2>Add New Stock</h2>
+    <section class="section-card" style="margin-bottom: 16px;">
+      <div class="section-head">
+        <h2>Add New Stock</h2>
+      </div>
 
       <form id="createStockForm">
         <div class="admin-toolbar">
           <div class="form-group">
             <label for="companyName">Company Name</label>
-            <input type="text" id="companyName" class="form-control" required />
+            <input type="text" id="companyName" class="form-control" placeholder="e.g. Apple Inc." required />
           </div>
 
           <div class="form-group">
@@ -43,7 +46,7 @@
           </div>
 
           <div class="form-group">
-            <label for="stockPrice">Current Price</label>
+            <label for="stockPrice">Starting Price</label>
             <input type="number" id="stockPrice" class="form-control" min="0" step="0.01" required />
           </div>
 
@@ -52,27 +55,31 @@
       </form>
     </section>
 
-    <section class="admin-panel">
-      <h2>Current Stocks</h2>
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Current Stocks</h2>
+        <button class="btn btn-secondary" id="reloadBtn">Refresh</button>
+      </div>
 
-      <div class="table-responsive">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Symbol</th>
-              <th>Current Price</th>
-              <th>New Price</th>
-              <th>Last Updated</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="stocksBody">
-            <tr>
-              <td colspan="6" class="loading-text">Loading stocks...</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="admin-table-wrap">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Current Price</th>
+                <th>New Price</th>
+                <th>Last Updated</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="stocksBody">
+              <tr>
+                <td colspan="5" class="empty-text">Loading stocks...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   </main>
@@ -82,6 +89,7 @@
   <script type="module">
     import { initAdminUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
 
     await initAdminUI();
 
@@ -99,67 +107,107 @@
       alertBox.style.display = 'none';
     }
 
-    function formatMoney(value) {
-      return `$${Number(value || 0).toFixed(2)}`;
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function getLogoText(stock) {
+      return (stock.symbol || stock.company_name || '?')
+        .slice(0, 2)
+        .toUpperCase();
+    }
+
+    async function apiGet(action) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(`/api/admin?action=${action}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
+    async function apiPost(payload) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
     }
 
     async function loadStocks() {
       const body = document.getElementById('stocksBody');
-      body.innerHTML = '<tr><td colspan="6" class="loading-text">Loading stocks...</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="empty-text">Loading stocks...</td></tr>';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch('/api/admin?action=stocks', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to load stocks.');
-        }
-
+        const result = await apiGet('stocks');
         const stocks = result.stocks || [];
 
         if (stocks.length === 0) {
-          body.innerHTML = '<tr><td colspan="6" class="empty-text">No stocks found.</td></tr>';
+          body.innerHTML = '<tr><td colspan="5" class="empty-text">No stocks listed yet.</td></tr>';
           return;
         }
 
         body.innerHTML = stocks.map(stock => `
           <tr>
-            <td><strong>${stock.company_name}</strong></td>
-            <td>${stock.symbol || '-'}</td>
-            <td>${formatMoney(stock.current_price)}</td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="stock-logo" style="width: 38px; height: 38px; border-radius: 11px; font-size: .8rem;">
+                  ${escapeHtml(getLogoText(stock))}
+                </div>
+                <div>
+                  <strong>${escapeHtml(stock.company_name)}</strong><br />
+                  <span class="stock-symbol-chip">${escapeHtml(stock.symbol || 'N/A')}</span>
+                </div>
+              </div>
+            </td>
+            <td><strong>${formatMoney(stock.current_price)}</strong></td>
             <td>
               <input
                 type="number"
                 class="form-control price-input"
                 data-stock-id="${stock.id}"
-                data-current-price="${stock.current_price}"
                 min="0"
                 step="0.01"
                 value="${Number(stock.current_price).toFixed(2)}"
               />
             </td>
-            <td>${new Date(stock.updated_at).toLocaleString()}</td>
+            <td style="color: var(--text-muted); font-size: .85rem;">
+              ${stock.updated_at ? new Date(stock.updated_at).toLocaleString() : '-'}
+            </td>
             <td>
-              <button class="btn btn-primary" onclick="updatePrice('${stock.id}', this)">
-                Update
-              </button>
+              <button class="btn btn-primary" data-update="${stock.id}">Update</button>
             </td>
           </tr>
         `).join('');
+
+        document.querySelectorAll('[data-update]').forEach(btn => {
+          btn.addEventListener('click', () => updatePrice(btn.dataset.update, btn));
+        });
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="6" style="color: var(--danger);">${err.message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="5" style="color: var(--danger);">${escapeHtml(err.message)}</td></tr>`;
       }
     }
 
-    window.updatePrice = async function(stockId, btn) {
+    async function updatePrice(stockId, btn) {
       hideAlert();
 
       const input = document.querySelector(`input[data-stock-id="${stockId}"]`);
@@ -174,27 +222,11 @@
       btn.textContent = 'Saving...';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch('/api/admin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            action: 'update_price',
-            stock_id: stockId,
-            new_price: newPrice
-          })
+        await apiPost({
+          action: 'update_price',
+          stock_id: stockId,
+          new_price: newPrice
         });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to update price.');
-        }
 
         showAlert('Price updated successfully.', 'success');
         await loadStocks();
@@ -204,7 +236,7 @@
         btn.disabled = false;
         btn.textContent = 'Update';
       }
-    };
+    }
 
     createForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -220,7 +252,7 @@
       }
 
       if (!Number.isFinite(current_price) || current_price < 0) {
-        showAlert('Enter a valid current price.');
+        showAlert('Enter a valid starting price.');
         return;
       }
 
@@ -228,28 +260,12 @@
       createBtn.textContent = 'Adding...';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch('/api/admin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            action: 'create_stock',
-            company_name,
-            symbol,
-            current_price
-          })
+        await apiPost({
+          action: 'create_stock',
+          company_name,
+          symbol,
+          current_price
         });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to create stock.');
-        }
 
         showAlert('Stock created successfully.', 'success');
         createForm.reset();
@@ -261,6 +277,8 @@
         createBtn.textContent = 'Add Stock';
       }
     });
+
+    document.getElementById('reloadBtn').addEventListener('click', loadStocks);
 
     await loadStocks();
   </script>
