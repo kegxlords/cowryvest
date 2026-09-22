@@ -76,9 +76,10 @@ async function ensureProfileExists(userId, fullName, email, referredBy = null) {
     if (!existingProfile.email && email) {
       updates.email = email;
     }
-
-    // Do not overwrite referred_by for existing users.
-    // This protects referral attribution.
+// Link referral if this existing profile was never referred by anyone
+    if (!existingProfile.referred_by && referredBy && referredBy !== userId) {
+      updates.referred_by = referredBy;
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: updateError } = await supabaseAdmin
