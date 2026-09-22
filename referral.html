@@ -10,57 +10,109 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="container" style="margin-top: 30px;">
+  <main class="container page-container">
+
     <section class="referral-hero">
       <h1>Invite & Earn 10%</h1>
-      <p>Earn 10% cashback whenever someone you refer makes an approved deposit.</p>
+      <p>
+        Share your link. When someone registers with your code and makes an
+        approved deposit, you instantly earn 10% cashback in your Main Balance.
+      </p>
 
       <div class="copy-box">
         <input type="text" id="referralLink" readonly placeholder="Loading referral link..." />
         <button class="btn btn-light" id="copyBtn">Copy Link</button>
       </div>
+
+      <div class="share-row" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+        <button class="btn btn-whatsapp" id="whatsappBtn">Share on WhatsApp</button>
+        <button class="btn btn-light" id="copyCodeBtn">Copy Code</button>
+      </div>
     </section>
 
-    <div class="referral-stats">
-      <div class="referral-stat">
-        <h3>Total Referrals</h3>
-        <div class="value" id="totalReferrals">0</div>
+    <section class="stat-grid dash-stats">
+      <div class="stat-card premium blue">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Total Referrals</h3>
+          <div class="value" id="totalReferrals">0</div>
+        </div>
       </div>
 
-      <div class="referral-stat">
-        <h3>Approved Deposits</h3>
-        <div class="value" id="approvedDeposits">0</div>
+      <div class="stat-card premium green">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Approved Deposits</h3>
+          <div class="value" id="approvedDeposits">0</div>
+        </div>
       </div>
 
-      <div class="referral-stat">
-        <h3>Referred Deposits</h3>
-        <div class="value" id="totalDepositAmount">$0.00</div>
+      <div class="stat-card premium indigo">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"></path>
+            <path d="m7 13 3-3 4 4 5-6"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Referred Volume</h3>
+          <div class="value" id="totalDepositAmount">₦0.00</div>
+        </div>
       </div>
 
-      <div class="referral-stat">
-        <h3>Bonus Earned</h3>
-        <div class="value credit" id="totalBonusEarned">$0.00</div>
+      <div class="stat-card premium amber">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Bonus Earned</h3>
+          <div class="value credit" id="totalBonusEarned">₦0.00</div>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <h3>Referred Users</h3>
+    <div class="deposit-layout">
+      <section class="section-card">
+        <div class="section-head">
+          <h2>How It Works</h2>
+        </div>
 
-      <div class="table-responsive">
-        <table class="history-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Joined</th>
-            </tr>
-          </thead>
-          <tbody id="referralTableBody">
-            <tr>
-              <td colspan="2" class="empty-state">Loading...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="steps-card" style="background: #fff;">
+          <ol style="margin-left: 18px; color: var(--text-muted); font-size: .92rem; display: grid; gap: 10px;">
+            <li><strong>Share your link.</strong> Send your referral link or code to friends.</li>
+            <li><strong>They register & deposit.</strong> The code links their account to you automatically.</li>
+            <li><strong>You earn 10%.</strong> Once admin approves their deposit, your cashback lands in your Main Balance.</li>
+          </ol>
+        </div>
+
+        <div class="pay-note" style="margin-top: 14px;">
+          Bonuses are paid only on <strong>approved</strong> deposits. Pending or rejected
+          deposits do not generate cashback.
+        </div>
+      </section>
+
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Referred Users</h2>
+        </div>
+
+        <div id="referralList" class="mini-list">
+          <div class="mini-empty">Loading...</div>
+        </div>
+      </section>
     </div>
   </main>
 
@@ -69,11 +121,39 @@
   <script type="module">
     import { initUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
 
     await initUI();
 
-    function formatMoney(value) {
-      return `$${Number(value || 0).toFixed(2)}`;
+    let referralLink = '';
+    let referralCode = '';
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function getInitials(name) {
+      return String(name || 'U')
+        .trim()
+        .split(' ')
+        .map(p => p[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+    }
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     async function loadReferralDashboard() {
@@ -81,52 +161,75 @@
       if (!session) return;
 
       const res = await fetch('/api/referral?action=dashboard', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
 
       const result = await res.json();
 
       if (!res.ok) {
-        alert(result.error || 'Failed to load referral data.');
+        document.getElementById('referralList').innerHTML =
+          `<div class="mini-empty">${escapeHtml(result.error || 'Failed to load referral data.')}</div>`;
         return;
       }
 
-      document.getElementById('referralLink').value = result.referral_link || '';
+      referralLink = result.referral_link || '';
+      referralCode = result.referral_code || '';
+
+      document.getElementById('referralLink').value = referralLink;
       document.getElementById('totalReferrals').textContent = result.summary.total_referrals;
       document.getElementById('approvedDeposits').textContent = result.summary.approved_deposits;
       document.getElementById('totalDepositAmount').textContent = formatMoney(result.summary.total_deposit_amount);
       document.getElementById('totalBonusEarned').textContent = formatMoney(result.summary.total_bonus_earned);
 
-      const tbody = document.getElementById('referralTableBody');
+      const list = document.getElementById('referralList');
 
       if (!result.referrals || result.referrals.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No referrals yet.</td></tr>';
+        list.innerHTML = `
+          <div class="mini-empty">
+            No referrals yet. Share your link to start earning.<br />
+            <a href="#" id="emptyShare">Share on WhatsApp</a>
+          </div>
+        `;
+        document.getElementById('emptyShare')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          shareWhatsApp();
+        });
         return;
       }
 
-      tbody.innerHTML = result.referrals.map(r => `
-        <tr>
-          <td><strong>${r.full_name || 'User'}</strong></td>
-          <td>${new Date(r.created_at).toLocaleDateString()}</td>
-        </tr>
+      list.innerHTML = result.referrals.map(r => `
+        <div class="mini-item">
+          <div class="hist-icon credit" style="background: #eef2ff; color: #4f46e5;">
+            <span style="font-weight: 900; font-size: .8rem;">${escapeHtml(getInitials(r.full_name))}</span>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div class="title">${escapeHtml(r.full_name || 'User')}</div>
+            <div class="meta">Joined ${new Date(r.created_at).toLocaleDateString()}</div>
+          </div>
+        </div>
       `).join('');
     }
 
-    document.getElementById('copyBtn').addEventListener('click', async () => {
-      const input = document.getElementById('referralLink');
-      if (!input.value) return;
+    function shareWhatsApp() {
+      const message = `Join me on Cowryvest and start investing in shares with daily income. Use my referral code ${referralCode} when you sign up: ${referralLink}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+    }
 
-      try {
-        await navigator.clipboard.writeText(input.value);
-        alert('Referral link copied!');
-      } catch {
-        input.select();
-        document.execCommand('copy');
-        alert('Referral link copied!');
-      }
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      if (!referralLink) return;
+      const ok = await copyText(referralLink);
+      document.getElementById('copyBtn').textContent = ok ? 'Copied!' : 'Copy Failed';
+      setTimeout(() => (document.getElementById('copyBtn').textContent = 'Copy Link'), 1500);
     });
+
+    document.getElementById('copyCodeBtn').addEventListener('click', async () => {
+      if (!referralCode) return;
+      const ok = await copyText(referralCode);
+      document.getElementById('copyCodeBtn').textContent = ok ? 'Copied!' : 'Copy Failed';
+      setTimeout(() => (document.getElementById('copyCodeBtn').textContent = 'Copy Code'), 1500);
+    });
+
+    document.getElementById('whatsappBtn').addEventListener('click', shareWhatsApp);
 
     await loadReferralDashboard();
   </script>
