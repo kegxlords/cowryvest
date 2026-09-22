@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Referrals | Cowryvest</title>
+  <title>Transaction History | Cowryvest</title>
   <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body>
@@ -11,63 +11,39 @@
   <div id="header-placeholder"></div>
 
   <main class="container page-container">
-
-    <section class="referral-hero">
-      <h1>Invite & Earn 10%</h1>
-      <p>
-        Share your link. When someone registers with your code and makes an
-        approved deposit, you instantly earn 10% cashback in your Main Balance.
-      </p>
-
-      <div class="copy-box">
-        <input type="text" id="referralLink" readonly placeholder="Loading referral link..." />
-        <button class="btn btn-light" id="copyBtn">Copy Link</button>
+    <div class="page-hero">
+      <div>
+        <h1>Transaction History</h1>
+        <p>Every movement across your Main and Frozen balances.</p>
       </div>
-
-      <div class="share-row" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
-        <button class="btn btn-whatsapp" id="whatsappBtn">Share on WhatsApp</button>
-        <button class="btn btn-light" id="copyCodeBtn">Copy Code</button>
-      </div>
-    </section>
+    </div>
 
     <section class="stat-grid dash-stats">
-      <div class="stat-card premium blue">
-        <div class="stat-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-          </svg>
-        </div>
-        <div>
-          <h3>Total Referrals</h3>
-          <div class="value" id="totalReferrals">0</div>
-        </div>
-      </div>
-
       <div class="stat-card premium green">
         <div class="stat-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 6 9 17l-5-5"></path>
+            <path d="M12 3v12"></path>
+            <path d="m7 10 5 5 5-5"></path>
+            <path d="M5 21h14"></path>
           </svg>
         </div>
         <div>
-          <h3>Approved Deposits</h3>
-          <div class="value" id="approvedDeposits">0</div>
+          <h3>Total Deposited</h3>
+          <div class="value" id="statDeposits">₦0.00</div>
         </div>
       </div>
 
-      <div class="stat-card premium indigo">
+      <div class="stat-card premium blue">
         <div class="stat-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 3v18h18"></path>
-            <path d="m7 13 3-3 4 4 5-6"></path>
+            <path d="M12 21V9"></path>
+            <path d="m7 14 5-5 5 5"></path>
+            <path d="M5 3h14"></path>
           </svg>
         </div>
         <div>
-          <h3>Referred Volume</h3>
-          <div class="value" id="totalDepositAmount">₦0.00</div>
+          <h3>Total Withdrawn</h3>
+          <div class="value" id="statWithdrawals">₦0.00</div>
         </div>
       </div>
 
@@ -78,42 +54,44 @@
           </svg>
         </div>
         <div>
-          <h3>Bonus Earned</h3>
-          <div class="value credit" id="totalBonusEarned">₦0.00</div>
+          <h3>Total Earned</h3>
+          <div class="value" id="statEarned">₦0.00</div>
+        </div>
+      </div>
+
+      <div class="stat-card premium indigo">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M12 7v5l3 3"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Transactions</h3>
+          <div class="value" id="statCount">0</div>
         </div>
       </div>
     </section>
 
-    <div class="deposit-layout">
-      <section class="section-card">
-        <div class="section-head">
-          <h2>How It Works</h2>
-        </div>
-
-        <div class="steps-card" style="background: #fff;">
-          <ol style="margin-left: 18px; color: var(--text-muted); font-size: .92rem; display: grid; gap: 10px;">
-            <li><strong>Share your link.</strong> Send your referral link or code to friends.</li>
-            <li><strong>They register & deposit.</strong> The code links their account to you automatically.</li>
-            <li><strong>You earn 10%.</strong> Once admin approves their deposit, your cashback lands in your Main Balance.</li>
-          </ol>
-        </div>
-
-        <div class="pay-note" style="margin-top: 14px;">
-          Bonuses are paid only on <strong>approved</strong> deposits. Pending or rejected
-          deposits do not generate cashback.
-        </div>
-      </section>
-
-      <section class="section-card">
-        <div class="section-head">
-          <h2>Referred Users</h2>
-        </div>
-
-        <div id="referralList" class="mini-list">
-          <div class="mini-empty">Loading...</div>
-        </div>
-      </section>
+    <div class="filter-bar" id="filterBar">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="deposit">Deposits</button>
+      <button class="filter-btn" data-filter="withdrawal">Withdrawals</button>
+      <button class="filter-btn" data-filter="investment">Investments</button>
+      <button class="filter-btn" data-filter="earnings">Earnings</button>
+      <button class="filter-btn" data-filter="frozen_credit">Frozen</button>
     </div>
+
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Activity</h2>
+        <span id="countLabel" style="color: var(--text-muted); font-size: .85rem; font-weight: 700;"></span>
+      </div>
+
+      <div id="historyList" class="mini-list">
+        <div class="mini-empty">Loading...</div>
+      </div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
@@ -125,8 +103,18 @@
 
     await initUI();
 
-    let referralLink = '';
-    let referralCode = '';
+    let allHistory = [];
+    let activeFilter = 'all';
+
+    const ICONS = {
+      deposit: '<path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path>',
+      withdrawal: '<path d="M12 21V9"></path><path d="m7 14 5-5 5 5"></path><path d="M5 3h14"></path>',
+      stock_purchase: '<path d="M3 17l6-6 4 4 8-8"></path><path d="M14 7h7v7"></path>',
+      stock_sale: '<path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path>',
+      daily_yield: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path>',
+      referral_bonus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+      frozen_credit: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>'
+    };
 
     function escapeHtml(value) {
       return String(value || '')
@@ -137,101 +125,122 @@
         .replace(/'/g, '&#039;');
     }
 
-    function getInitials(name) {
-      return String(name || 'U')
-        .trim()
-        .split(' ')
-        .map(p => p[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase();
+    function statusBadge(status) {
+      return `<span class="status-badge status-${status}">${status}</span>`;
     }
 
-    async function copyText(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        return false;
+    function getCategory(item) {
+      if (item.category === 'deposit') return 'deposit';
+      if (item.category === 'withdrawal') return 'withdrawal';
+      if (item.category === 'stock_purchase' || item.category === 'stock_sale') return 'investment';
+      if (item.category === 'daily_yield' || item.category === 'referral_bonus') return 'earnings';
+      if (item.category === 'frozen_credit') return 'frozen_credit';
+      return 'other';
+    }
+
+    function renderStats() {
+      let deposits = 0;
+      let withdrawals = 0;
+      let earned = 0;
+
+      allHistory.forEach(item => {
+        if (item.category === 'deposit' && item.status === 'approved') {
+          deposits += item.amount;
+        }
+        if (item.category === 'withdrawal' && item.status === 'approved') {
+          withdrawals += item.amount;
+        }
+        if (item.category === 'daily_yield' || item.category === 'referral_bonus') {
+          earned += item.amount;
+        }
+      });
+
+      document.getElementById('statDeposits').textContent = formatMoney(deposits);
+      document.getElementById('statWithdrawals').textContent = formatMoney(withdrawals);
+      document.getElementById('statEarned').textContent = formatMoney(earned);
+      document.getElementById('statCount').textContent = allHistory.length;
+    }
+
+    function renderList() {
+      const list = document.getElementById('historyList');
+
+      const filtered = allHistory.filter(item => {
+        if (activeFilter === 'all') return true;
+        return getCategory(item) === activeFilter;
+      });
+
+      document.getElementById('countLabel').textContent =
+        `${filtered.length} record${filtered.length === 1 ? '' : 's'}`;
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="mini-empty">No transactions in this category yet.</div>';
+        return;
       }
+
+      list.innerHTML = filtered.map(item => {
+        const icon = ICONS[item.category] || ICONS.stock_purchase;
+        const iconClass = item.direction === 'credit' ? 'credit' : 'debit';
+        const sign = item.direction === 'credit' ? '+' : '-';
+        const amountClass = item.direction === 'credit' ? 'credit' : 'debit';
+
+        return `
+          <div class="mini-item history-item">
+            <div class="hist-icon ${iconClass}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                ${icon}
+              </svg>
+            </div>
+
+            <div style="flex: 1; min-width: 0;">
+              <div class="title">
+                ${escapeHtml(item.label)}
+                ${statusBadge(item.status)}
+              </div>
+              <div class="meta">
+                ${escapeHtml(item.description || item.balance_type + ' balance')}
+                • ${new Date(item.created_at).toLocaleString()}
+              </div>
+            </div>
+
+            <div class="amount ${amountClass}">
+              ${sign}${formatMoney(item.amount)}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
-    async function loadReferralDashboard() {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        renderList();
+      });
+    });
+
+    async function loadHistory() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const res = await fetch('/api/referral?action=dashboard', {
+      const res = await fetch('/api/user?action=history', {
         headers: { 'Authorization': `Bearer ${session.access_token}` }
       });
 
       const result = await res.json();
 
       if (!res.ok) {
-        document.getElementById('referralList').innerHTML =
-          `<div class="mini-empty">${escapeHtml(result.error || 'Failed to load referral data.')}</div>`;
+        document.getElementById('historyList').innerHTML =
+          `<div class="mini-empty">${escapeHtml(result.error || 'Failed to load history.')}</div>`;
         return;
       }
 
-      referralLink = result.referral_link || '';
-      referralCode = result.referral_code || '';
-
-      document.getElementById('referralLink').value = referralLink;
-      document.getElementById('totalReferrals').textContent = result.summary.total_referrals;
-      document.getElementById('approvedDeposits').textContent = result.summary.approved_deposits;
-      document.getElementById('totalDepositAmount').textContent = formatMoney(result.summary.total_deposit_amount);
-      document.getElementById('totalBonusEarned').textContent = formatMoney(result.summary.total_bonus_earned);
-
-      const list = document.getElementById('referralList');
-
-      if (!result.referrals || result.referrals.length === 0) {
-        list.innerHTML = `
-          <div class="mini-empty">
-            No referrals yet. Share your link to start earning.<br />
-            <a href="#" id="emptyShare">Share on WhatsApp</a>
-          </div>
-        `;
-        document.getElementById('emptyShare')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          shareWhatsApp();
-        });
-        return;
-      }
-
-      list.innerHTML = result.referrals.map(r => `
-        <div class="mini-item">
-          <div class="hist-icon credit" style="background: #eef2ff; color: #4f46e5;">
-            <span style="font-weight: 900; font-size: .8rem;">${escapeHtml(getInitials(r.full_name))}</span>
-          </div>
-          <div style="flex: 1; min-width: 0;">
-            <div class="title">${escapeHtml(r.full_name || 'User')}</div>
-            <div class="meta">Joined ${new Date(r.created_at).toLocaleDateString()}</div>
-          </div>
-        </div>
-      `).join('');
+      allHistory = result.history || [];
+      renderStats();
+      renderList();
     }
 
-    function shareWhatsApp() {
-      const message = `Join me on Cowryvest and start investing in shares with daily income. Use my referral code ${referralCode} when you sign up: ${referralLink}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-    }
-
-    document.getElementById('copyBtn').addEventListener('click', async () => {
-      if (!referralLink) return;
-      const ok = await copyText(referralLink);
-      document.getElementById('copyBtn').textContent = ok ? 'Copied!' : 'Copy Failed';
-      setTimeout(() => (document.getElementById('copyBtn').textContent = 'Copy Link'), 1500);
-    });
-
-    document.getElementById('copyCodeBtn').addEventListener('click', async () => {
-      if (!referralCode) return;
-      const ok = await copyText(referralCode);
-      document.getElementById('copyCodeBtn').textContent = ok ? 'Copied!' : 'Copy Failed';
-      setTimeout(() => (document.getElementById('copyCodeBtn').textContent = 'Copy Code'), 1500);
-    });
-
-    document.getElementById('whatsappBtn').addEventListener('click', shareWhatsApp);
-
-    await loadReferralDashboard();
+    await loadHistory();
   </script>
 </body>
 </html>
