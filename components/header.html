@@ -1,12 +1,27 @@
 <header class="site-header">
   <div class="container header-inner">
-    <a href="/" class="logo">
-      <span class="logo-mark">C</span>
+    <a href="/dashboard.html" class="logo" aria-label="Cowryvest home">
+      <span class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 17l6-6 4 4 8-8"></path>
+          <path d="M14 7h7v7"></path>
+        </svg>
+      </span>
       <span class="logo-text">Cowryvest</span>
     </a>
 
-    <nav id="mainNav" class="main-nav" aria-label="Main navigation"></nav>
+    <nav id="mainNav" class="main-nav" aria-label="Primary navigation"></nav>
 
-    <div id="authActions" class="auth-actions"></div>
+    <div class="header-right">
+      <div id="balanceChip" class="balance-chip hidden"></div>
+      <div id="authActions" class="auth-actions"></div>
+      <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
   </div>
+
+  <div id="mobileMenu" class="mobile-menu"></div>
 </header>
