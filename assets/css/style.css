@@ -2873,3 +2873,249 @@ footer { background: var(--card-bg); border-top: 1px solid var(--border); paddin
     justify-content: center;
   }
 }
+/* =========================================
+   PREMIUM AUTH (LOGIN / REGISTER)
+========================================= */
+
+.auth-split-wrap {
+  padding: 24px 16px 48px;
+  display: flex;
+  justify-content: center;
+}
+
+.auth-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  max-width: 980px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.16);
+  border: 1px solid var(--border);
+}
+
+/* Brand panel */
+.auth-brand {
+  position: relative;
+  overflow: hidden;
+  padding: 40px 36px;
+  color: #fff;
+  background: linear-gradient(160deg, #312e81 0%, #4f46e5 55%, #7c3aed 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-brand::before,
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.auth-brand::before {
+  width: 260px;
+  height: 260px;
+  top: -110px;
+  right: -90px;
+}
+
+.auth-brand::after {
+  width: 180px;
+  height: 180px;
+  bottom: -80px;
+  left: -60px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.auth-brand-logo {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+}
+
+.auth-brand-logo .logo-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.auth-brand-logo .logo-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.auth-brand h1 {
+  position: relative;
+  z-index: 1;
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.auth-brand > p {
+  position: relative;
+  z-index: 1;
+  opacity: 0.88;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.auth-features {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.auth-features li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.feat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.feat-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.auth-brand-foot {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+/* Form panel */
+.auth-form-side {
+  padding: 40px 36px;
+  display: flex;
+  align-items: center;
+}
+
+.auth-form-card {
+  width: 100%;
+}
+
+.auth-form-card h2 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.auth-form-card .subtitle {
+  color: var(--text-muted);
+  margin-bottom: 22px;
+}
+
+/* Password toggle */
+.pass-wrap {
+  position: relative;
+}
+
+.pass-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.pass-toggle:hover {
+  color: var(--primary);
+}
+
+.pass-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pass-wrap .form-control {
+  padding-right: 42px;
+}
+
+/* Referral prefill chip */
+.ref-prefill {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+  display: none;
+}
+
+.ref-prefill.active {
+  display: block;
+}
+
+@media (max-width: 860px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+    border-radius: 22px;
+  }
+
+  .auth-brand {
+    padding: 28px 24px;
+    gap: 12px;
+  }
+
+  .auth-brand h1 {
+    font-size: 1.5rem;
+  }
+
+  .auth-features {
+    gap: 8px;
+  }
+
+  .auth-features li {
+    font-size: 0.85rem;
+  }
+
+  .auth-brand-foot {
+    display: none;
+  }
+
+  .auth-form-side {
+    padding: 28px 22px;
+  }
+}
