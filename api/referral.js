@@ -135,8 +135,25 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         referral_code: profile?.referral_code || '',
-        referral_link: `${req.headers.origin || ''}/register.html?ref=${profile?.referral_code || ''}`,
+      const baseUrl =
+        process.env.APP_URL ||
+        (req.headers.host ? `https://${req.headers.host}` : '') ||
+        req.headers.origin ||
+        '';
+
+      return res.status(200).json({
+        success: true,
+        referral_code: profile?.referral_code || '',
+        referral_link: `${baseUrl}/register.html?ref=${profile?.referral_code || ''}`,
         summary: {
+          total_referrals: referrals?.length || 0,
+          approved_deposits: approvedDepositCount,
+          total_deposit_amount: Math.round(totalDepositAmount * 100) / 100,
+          total_bonus_earned: Math.round(totalBonusEarned * 100) / 100
+        },
+        referrals: referrals || []
+      });
+      summary: {
           total_referrals: referrals?.length || 0,
           approved_deposits: approvedDepositCount,
           total_deposit_amount: Math.round(totalDepositAmount * 100) / 100,
