@@ -101,7 +101,7 @@
   <div id="footer-placeholder"></div>
 
   <script type="module">
-    import { initUI } from '/lib/ui.js';
+    import { initUI, updateBalanceChip } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
     import { formatMoney } from '/lib/format.js';
 
@@ -109,7 +109,7 @@
 
     let profile = null;
     let stocks = [];
-    let holdingsMap = {};
+    let holdings = [];
     let selectedStock = null;
 
     const grid = document.getElementById('marketGrid');
@@ -124,65 +124,71 @@
         .replace(/'/g, '&#039;');
     }
 
+    // All data now comes from server APIs (service role)
+    async function apiGet(url) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
     function getLogoText(stock) {
       return (stock.symbol || stock.company_name || '?')
         .slice(0, 2)
         .toUpperCase();
     }
 
+    // Holdings keyed by stockId:source for lock warnings + badges
+    function holdingFor(stockId, source) {
+      return holdings.find(h => h.stock_id === stockId && h.purchase_source === source);
+    }
+
+    function holdingSummary(stockId) {
+      const rows = holdings.filter(h => h.stock_id === stockId);
+      if (rows.length === 0) return null;
+
+      const quantity = rows.reduce((sum, h) => sum + h.quantity, 0);
+      const lock = rows.reduce((max, h) => Math.max(max, h.lock_in_days), 0);
+      return { quantity, lock };
+    }
+
     /* ---------- Loaders ---------- */
 
-    async function loadProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    async function loadAll() {
+      try {
+        const [profileRes, stocksRes, holdingsRes] = await Promise.all([
+          apiGet('/api/user?action=profile'),
+          apiGet('/api/wealth?action=stocks'),
+          apiGet('/api/wealth?action=holdings')
+        ]);
 
-      const { data } = await supabase
-        .from('profiles')
-        .select('main_balance, frozen_balance')
-        .eq('id', user.id)
-        .single();
+        profile = profileRes.profile;
+        stocks = stocksRes.stocks || [];
+        holdings = holdingsRes.holdings || [];
 
-      profile = data;
-
-      document.getElementById('mainChip').textContent = formatMoney(profile?.main_balance);
-      document.getElementById('frozenChip').textContent = formatMoney(profile?.frozen_balance);
-      document.getElementById('mainSourceBal').textContent = formatMoney(profile?.main_balance);
-      document.getElementById('frozenSourceBal').textContent = formatMoney(profile?.frozen_balance);
-    }
-
-    async function loadHoldings() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: holdings } = await supabase
-        .from('user_stocks')
-        .select('stock_id, quantity, lock_in_days')
-        .eq('user_id', user.id);
-
-      holdingsMap = {};
-
-      (holdings || []).forEach(h => {
-        if (!holdingsMap[h.stock_id]) {
-          holdingsMap[h.stock_id] = { quantity: 0, lock: 0 };
-        }
-        holdingsMap[h.stock_id].quantity += h.quantity;
-        holdingsMap[h.stock_id].lock = Math.max(holdingsMap[h.stock_id].lock, h.lock_in_days);
-      });
-    }
-
-    async function loadStocks() {
-      const { data, error } = await supabase
-        .from('stocks')
-        .select('id, company_name, symbol, current_price, updated_at')
-        .order('company_name', { ascending: true });
-
-      if (error) {
-        grid.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
-        return;
+        renderChips();
+        renderGrid();
+      } catch (err) {
+        grid.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
       }
+    }
 
-      stocks = data || [];
-      renderGrid();
+    function renderChips() {
+      const main = formatMoney(profile?.main_balance);
+      const frozen = formatMoney(profile?.frozen_balance);
+
+      document.getElementById('mainChip').textContent = main;
+      document.getElementById('frozenChip').textContent = frozen;
+      document.getElementById('mainSourceBal').textContent = main;
+      document.getElementById('frozenSourceBal').textContent = frozen;
+
+      updateBalanceChip(profile?.main_balance);
     }
 
     function renderGrid() {
@@ -200,12 +206,12 @@
       }
 
       grid.innerHTML = filtered.map(stock => {
-        const holding = holdingsMap[stock.id];
+        const summary = holdingSummary(stock.id);
 
-        const holdingBadge = holding
+        const holdingBadge = summary
           ? `<div class="stock-holding">
-               You own ${holding.quantity} share${holding.quantity === 1 ? '' : 's'}
-               ${holding.lock > 0 ? `• ${holding.lock}d lock` : '• Unlocked'}
+               You own ${summary.quantity} share${summary.quantity === 1 ? '' : 's'}
+               ${summary.lock > 0 ? `• ${summary.lock}d lock` : '• Unlocked'}
              </div>`
           : '';
 
@@ -249,16 +255,17 @@
       return isNaN(value) || value < 1 ? 1 : value;
     }
 
-    async function openBuyModal(stockId) {
+    function openBuyModal(stockId) {
       selectedStock = stocks.find(s => s.id === stockId);
       if (!selectedStock) return;
 
       document.getElementById('buyStockName').textContent = `Buy ${selectedStock.company_name}`;
       document.getElementById('quantityInput').value = 1;
       document.querySelector('input[name="purchase_source"][value="main"]').checked = true;
+
       updateSourceCards();
       updateBuySummary();
-      await updateLockWarning();
+      updateLockWarning();
 
       document.getElementById('buyModal').classList.add('active');
     }
@@ -301,22 +308,12 @@
       }
     }
 
-    async function updateLockWarning() {
+    function updateLockWarning() {
       if (!selectedStock) return;
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
       const source = getSelectedSource();
       const qty = getQuantity();
-
-      const { data: existing } = await supabase
-        .from('user_stocks')
-        .select('quantity, lock_in_days')
-        .eq('user_id', user.id)
-        .eq('stock_id', selectedStock.id)
-        .eq('purchase_source', source)
-        .maybeSingle();
+      const existing = holdingFor(selectedStock.id, source);
 
       const currentQty = existing?.quantity || 0;
       const currentLock = existing?.lock_in_days || 0;
@@ -339,15 +336,13 @@
     }
 
     document.getElementById('qtyMinus').addEventListener('click', () => {
-      const input = document.getElementById('quantityInput');
-      input.value = Math.max(1, getQuantity() - 1);
+      document.getElementById('quantityInput').value = Math.max(1, getQuantity() - 1);
       updateBuySummary();
       updateLockWarning();
     });
 
     document.getElementById('qtyPlus').addEventListener('click', () => {
-      const input = document.getElementById('quantityInput');
-      input.value = getQuantity() + 1;
+      document.getElementById('quantityInput').value = getQuantity() + 1;
       updateBuySummary();
       updateLockWarning();
     });
@@ -403,9 +398,7 @@
         }
 
         closeBuyModal();
-        await loadProfile();
-        await loadHoldings();
-        renderGrid();
+        await loadAll();
       } catch (err) {
         alert(err.message);
       } finally {
@@ -416,9 +409,7 @@
 
     /* ---------- Init ---------- */
 
-    await loadProfile();
-    await loadHoldings();
-    await loadStocks();
+    await loadAll();
   </script>
 </body>
-</html>
+  </html>
