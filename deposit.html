@@ -10,62 +10,83 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="container" style="margin-top: 30px;">
-    <div class="page-header">
+  <main class="container page-container">
+    <div class="page-hero">
       <div>
         <h1>Deposit Funds</h1>
-        <p>Submit a deposit request using the name on your deposit. Admin will approve and credit your Main Balance.</p>
+        <p>Transfer manually to our account, then submit your request for verification.</p>
       </div>
-      <div class="balance-pill">
-        Main Balance: <span id="mainBalance">$0.00</span>
+      <div class="hero-chips">
+        <span class="chip main">Main: <span id="mainBalance">₦0.00</span></span>
       </div>
     </div>
 
-    <div class="form-card">
-      <div id="depositAlert" class="alert error"></div>
+    <div class="deposit-layout">
+      <!-- Payment details -->
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Payment Details</h2>
+        </div>
 
-      <form id="depositForm">
-        <div class="form-row">
+        <div class="method-tabs" id="methodTabs"></div>
+
+        <div class="pay-details" id="payDetails"></div>
+
+        <div class="pay-note" id="payNote"></div>
+
+        <div class="steps-card">
+          <h3>How manual deposit works</h3>
+          <ol>
+            <li>Transfer the exact amount to the account shown above.</li>
+            <li>Submit a deposit request with the name on the transfer.</li>
+            <li>Admin verifies and credits your Main Balance.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Request form -->
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Submit Deposit Request</h2>
+        </div>
+
+        <div id="depositAlert" class="alert error"></div>
+
+        <div class="selected-method-chip" id="selectedMethodChip">Method: -</div>
+
+        <form id="depositForm">
           <div class="form-group">
             <label for="amount">Amount</label>
             <input type="number" id="amount" class="form-control" min="1" step="0.01" required />
           </div>
 
           <div class="form-group">
-            <label for="paymentMethod">Payment Method</label>
-            <select id="paymentMethod" class="form-control" required>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="usdt_trc20">USDT TRC20</option>
-              <option value="usdt_erc20">USDT ERC20</option>
-              <option value="bitcoin">Bitcoin</option>
-            </select>
+            <label for="depositorName">Name on Deposit</label>
+            <input
+              type="text"
+              id="depositorName"
+              class="form-control"
+              placeholder="Account name used for the transfer"
+              required
+            />
+            <div class="input-hint">Must match the name on your bank account or wallet.</div>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label for="depositorName">Name on Deposit</label>
-          <input
-            type="text"
-            id="depositorName"
-            class="form-control"
-            placeholder="Enter the account name used for the deposit"
-            required
-          />
-          <div class="input-hint">
-            This should match the name on your bank account, wallet, or payment source.
-          </div>
-        </div>
-
-        <button type="submit" class="btn btn-primary" id="depositBtn">
-          Submit Deposit Request
-        </button>
-      </form>
+          <button type="submit" class="btn btn-primary w-full" id="depositBtn">
+            Submit Deposit Request
+          </button>
+        </form>
+      </section>
     </div>
 
-    <h2 style="margin-top: 30px; margin-bottom: 8px;">Recent Deposit Requests</h2>
-    <div id="depositRequests" class="request-list">
-      <p>Loading...</p>
-    </div>
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Recent Deposit Requests</h2>
+      </div>
+      <div id="depositRequests" class="mini-list">
+        <div class="mini-empty">Loading...</div>
+      </div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
@@ -73,8 +94,12 @@
   <script type="module">
     import { initUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
+    import { PAYMENT_METHODS } from '/lib/payment.js';
 
     await initUI();
+
+    let selectedMethod = PAYMENT_METHODS[0];
 
     const alertBox = document.getElementById('depositAlert');
     const form = document.getElementById('depositForm');
@@ -90,14 +115,6 @@
       alertBox.style.display = 'none';
     }
 
-    function formatMoney(value) {
-      return `$${Number(value || 0).toFixed(2)}`;
-    }
-
-    function statusBadge(status) {
-      return `<span class="status-badge status-${status}">${status}</span>`;
-    }
-
     function escapeHtml(value) {
       return String(value || '')
         .replace(/&/g, '&amp;')
@@ -106,6 +123,67 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
+
+    function statusBadge(status) {
+      return `<span class="status-badge status-${status}">${status}</span>`;
+    }
+
+    /* ---------- Payment methods ---------- */
+
+    function renderMethodTabs() {
+      document.getElementById('methodTabs').innerHTML = PAYMENT_METHODS
+        .map(m => `
+          <button
+            type="button"
+            class="method-tab ${m.id === selectedMethod.id ? 'active' : ''}"
+            data-method="${m.id}"
+          >
+            ${escapeHtml(m.label)}
+          </button>
+        `)
+        .join('');
+
+      document.querySelectorAll('.method-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedMethod = PAYMENT_METHODS.find(m => m.id === btn.dataset.method);
+          renderMethodTabs();
+          renderMethodDetails();
+        });
+      });
+    }
+
+    function renderMethodDetails() {
+      document.getElementById('selectedMethodChip').textContent =
+        `Method: ${selectedMethod.label}`;
+
+      document.getElementById('payNote').textContent = selectedMethod.note || '';
+
+      document.getElementById('payDetails').innerHTML = selectedMethod.details
+        .map((d, i) => `
+          <div class="pay-row">
+            <span class="label">${escapeHtml(d.label)}</span>
+            <span class="right">
+              <span class="value">${escapeHtml(d.value)}</span>
+              <button type="button" class="copy-btn" data-copy="${escapeHtml(d.value)}">Copy</button>
+            </span>
+          </div>
+        `)
+        .join('');
+
+      document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copy);
+            btn.textContent = 'Copied!';
+            setTimeout(() => (btn.textContent = 'Copy'), 1500);
+          } catch {
+            alert(btn.dataset.copy);
+          }
+        });
+      });
+    }
+
+    /* ---------- Data loading ---------- */
 
     async function loadProfile() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -117,12 +195,13 @@
         .eq('id', user.id)
         .single();
 
-      document.getElementById('mainBalance').textContent = formatMoney(profile?.main_balance);
+      document.getElementById('mainBalance').textContent =
+        formatMoney(profile?.main_balance);
     }
 
     async function loadRequests() {
       const container = document.getElementById('depositRequests');
-      container.innerHTML = '<p>Loading...</p>';
+      container.innerHTML = '<div class="mini-empty">Loading...</div>';
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -133,60 +212,49 @@
         .eq('user_id', user.id)
         .eq('type', 'deposit')
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(10);
 
       if (error) {
-        container.innerHTML = `<p style="color: var(--danger);">Error loading requests: ${escapeHtml(error.message)}</p>`;
+        container.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
         return;
       }
 
       if (!requests || requests.length === 0) {
-        container.innerHTML = '<div class="empty-state">No deposit requests yet.</div>';
+        container.innerHTML = '<div class="mini-empty">No deposit requests yet.</div>';
         return;
       }
 
       container.innerHTML = requests.map(r => {
-        const depositorName =
-          r.depositor_name ||
-          r.destination_details?.depositor_name ||
-          'Not provided';
+        const name = r.depositor_name || r.destination_details?.depositor_name || '-';
 
         return `
-          <div class="request-item">
-            <div class="left">
-              <div class="title">Deposit Request</div>
+          <div class="mini-item">
+            <div>
+              <div class="title">Deposit • ${escapeHtml(name)}</div>
               <div class="meta">
-                ${escapeHtml(r.payment_method || 'Payment method')} • ${new Date(r.created_at).toLocaleString()}
-              </div>
-              <div class="meta">
-                Name on deposit: <strong>${escapeHtml(depositorName)}</strong>
+                ${escapeHtml(r.payment_method || '-')} • ${new Date(r.created_at).toLocaleString()}
               </div>
             </div>
-
-            <div style="text-align: right;">
+            <div style="text-align:right;">
               <div class="amount credit">+${formatMoney(r.amount)}</div>
-              <div style="margin-top: 8px;">${statusBadge(r.status)}</div>
+              <div style="margin-top:6px;">${statusBadge(r.status)}</div>
             </div>
           </div>
         `;
       }).join('');
     }
 
+    /* ---------- Submit ---------- */
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
 
       const amount = Number.parseFloat(document.getElementById('amount').value);
-      const payment_method = document.getElementById('paymentMethod').value;
       const depositor_name = document.getElementById('depositorName').value.trim();
 
       if (!Number.isFinite(amount) || amount <= 0) {
         showAlert('Enter a valid deposit amount.');
-        return;
-      }
-
-      if (!payment_method) {
-        showAlert('Select a payment method.');
         return;
       }
 
@@ -211,7 +279,7 @@
           body: JSON.stringify({
             action: 'deposit_request',
             amount,
-            payment_method,
+            payment_method: selectedMethod.id,
             depositor_name
           })
         });
@@ -222,7 +290,7 @@
           throw new Error(result.error || 'Failed to submit deposit request.');
         }
 
-        showAlert('Deposit request submitted successfully.', 'success');
+        showAlert('Deposit request submitted. Waiting for admin verification.', 'success');
         form.reset();
         await loadRequests();
       } catch (err) {
@@ -233,6 +301,8 @@
       }
     });
 
+    renderMethodTabs();
+    renderMethodDetails();
     await loadProfile();
     await loadRequests();
   </script>
