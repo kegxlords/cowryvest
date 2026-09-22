@@ -1,110 +1,382 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Dashboard | Cowryvest</title>
-  <!-- 1. Link the Global CSS -->
-  <link rel="stylesheet" href="/assets/css/style.css">
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body>
 
-  <!-- 2. Placeholders for Shared Components -->
   <div id="header-placeholder"></div>
 
-  <!-- 3. Page Specific Content -->
-  <main class="container" style="margin-top: 30px;">
-    <h1 style="margin-bottom: 20px;">Welcome back, <span id="userName">Investor</span></h1>
+  <main class="container dash-container">
 
-    <!-- Balance Cards -->
-    <div class="grid-3">
-      <div class="card main-balance">
-        <h3>Main Balance (Withdrawable)</h3>
-        <div class="amount" id="mainBal">$0.00</div>
+    <!-- ===================== HERO CARD ===================== -->
+    <section class="dash-hero">
+      <div class="dash-hero-top">
+        <div>
+          <p class="dash-greeting" id="greetingText">Welcome back,</p>
+          <h1 id="userName">Investor</h1>
+        </div>
+        <div class="dash-hero-chip" id="memberSince">Member</div>
       </div>
-      <div class="card frozen-balance">
-        <h3>Frozen Balance (Promoter)</h3>
-        <div class="amount" id="frozenBal">$0.00</div>
-      </div>
-      <div class="card portfolio">
-        <h3>Total Portfolio Value</h3>
-        <div class="amount" id="portfolioVal">$0.00</div>
-      </div>
-    </div>
 
-    <!-- Daily Yield Preview -->
-    <div class="card" style="background: #ecfdf5; border: 1px solid #a7f3d0; margin-bottom: 30px;">
-      <h3 style="color: #065f46;">Pending Daily Yield (Credited at Midnight)</h3>
-      <div class="amount" style="color: #047857;" id="pendingYield">$0.00</div>
-    </div>
+      <div class="dash-hero-balance">
+        <span class="label">Total Account Value</span>
+        <div class="value" id="totalValue">₦0.00</div>
 
-    <!-- Quick Actions -->
-    <div class="card">
-      <h3>Quick Actions</h3>
-      <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-  <a href="/market.html" class="btn btn-primary">Buy Stocks</a>
-  <a href="/investments.html" class="btn btn-primary" style="background: var(--frozen);">View Portfolio</a>
-  <a href="/deposit.html" class="btn btn-primary" style="background: var(--success);">Deposit Funds</a>
-  <a href="/profile.html" class="btn btn-secondary">Profile</a>
-  <a href="/support.html" class="btn btn-secondary">Support</a>
-  <a href="/faq.html" class="btn btn-secondary">FAQ</a>
+        <div class="dash-hero-sub">
+          <span id="yieldChip">+₦0.00 daily yield</span>
+          <span id="refChip">Ref: ---</span>
+        </div>
       </div>
-    </div>
+
+      <div class="dash-hero-actions">
+        <a href="/deposit.html" class="hero-btn">Deposit Funds</a>
+        <a href="/market.html" class="hero-btn ghost">Start Investing</a>
+      </div>
+    </section>
+
+    <!-- ===================== BALANCE CARDS ===================== -->
+    <section class="stat-grid dash-stats">
+      <div class="stat-card premium green">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
+            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
+            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Main Balance</h3>
+          <div class="value" id="mainBal">₦0.00</div>
+          <span class="stat-sub">Withdrawable</span>
+        </div>
+      </div>
+
+      <div class="stat-card premium indigo">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Frozen Balance</h3>
+          <div class="value" id="frozenBal">₦0.00</div>
+          <span class="stat-sub">Promoter only</span>
+        </div>
+      </div>
+
+      <div class="stat-card premium blue">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"></path>
+            <path d="m7 13 3-3 4 4 5-6"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Portfolio Value</h3>
+          <div class="value" id="portfolioVal">₦0.00</div>
+          <span class="stat-sub" id="holdingsCount">0 active holdings</span>
+        </div>
+      </div>
+
+      <div class="stat-card premium amber">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path>
+            <path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9Z"></path>
+          </svg>
+        </div>
+        <div>
+          <h3>Daily Yield</h3>
+          <div class="value" id="pendingYield">₦0.00</div>
+          <span class="stat-sub">Credited at midnight</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== QUICK ACTIONS ===================== -->
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Quick Actions</h2>
+      </div>
+
+      <div class="action-grid">
+        <a href="/market.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17l6-6 4 4 8-8"></path>
+              <path d="M14 7h7v7"></path>
+            </svg>
+          </div>
+          Market
+        </a>
+
+        <a href="/investments.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="7" width="18" height="13" rx="2"></rect>
+              <path d="M8 7V5h8v2"></path>
+              <path d="M12 11v5"></path>
+              <path d="M9.5 13.5h5"></path>
+            </svg>
+          </div>
+          Portfolio
+        </a>
+
+        <a href="/deposit.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v12"></path>
+              <path d="m7 10 5 5 5-5"></path>
+              <path d="M5 21h14"></path>
+            </svg>
+          </div>
+          Deposit
+        </a>
+
+        <a href="/withdraw.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 21V9"></path>
+              <path d="m7 14 5-5 5 5"></path>
+              <path d="M5 3h14"></path>
+            </svg>
+          </div>
+          Withdraw
+        </a>
+
+        <a href="/referral.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+          Referral
+        </a>
+
+        <a href="/transaction-history.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 7v5l3 3"></path>
+            </svg>
+          </div>
+          History
+        </a>
+      </div>
+    </section>
+
+    <!-- ===================== HOLDINGS + ACTIVITY ===================== -->
+    <section class="dash-two-col">
+      <div class="section-card">
+        <div class="section-head">
+          <h2>Active Holdings</h2>
+          <a href="/investments.html">View all</a>
+        </div>
+        <div id="holdingsList" class="mini-list">
+          <div class="mini-empty">Loading...</div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-head">
+          <h2>Recent Activity</h2>
+          <a href="/transaction-history.html">View all</a>
+        </div>
+        <div id="activityList" class="mini-list">
+          <div class="mini-empty">Loading...</div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
 
-  <!-- 4. Page Specific Logic -->
   <script type="module">
     import { initUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
 
-    // Initialize shared header/footer and auth check
-    initUI();
+    await initUI();
 
-    // Fetch Dashboard Data
+    // Time-based greeting
+    const hour = new Date().getHours();
+    const greeting =
+      hour < 12 ? 'Good morning,' :
+      hour < 17 ? 'Good afternoon,' :
+      'Good evening,';
+
+    document.getElementById('greetingText').textContent = greeting;
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     async function loadDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Get Profile (Balances)
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // 1. Profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, main_balance, frozen_balance')
+        .select('full_name, main_balance, frozen_balance, referral_code, created_at')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (profile) {
-        document.getElementById('userName').innerText = profile.full_name || 'Investor';
-        document.getElementById('mainBal').innerText = `$${parseFloat(profile.main_balance).toFixed(2)}`;
-        document.getElementById('frozenBal').innerText = `$${parseFloat(profile.frozen_balance).toFixed(2)}`;
-      }
-
-      // 2. Get User Stocks (Portfolio Value & Pending Yield)
-      const { data: stocks } = await supabase
+      // 2. Holdings
+      const { data: holdings } = await supabase
         .from('user_stocks')
-        .select('*, stocks(current_price)')
+        .select(`
+          quantity,
+          total_initial_invested,
+          purchase_source,
+          lock_in_days,
+          stocks (
+            company_name,
+            symbol,
+            current_price
+          )
+        `)
         .eq('user_id', user.id);
 
-      let totalPortfolio = 0;
-      let totalPendingYield = 0;
-
-      if (stocks) {
-        stocks.forEach(s => {
-          // Current Market Value
-          totalPortfolio += s.quantity * s.stocks.current_price;
-          
-          // 5% of initial invested amount
-          totalPendingYield += s.total_initial_invested * 0.05;
-        });
+      // 3. History
+      let history = [];
+      if (session) {
+        try {
+          const res = await fetch('/api/user?action=history', {
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+          });
+          const result = await res.json();
+          if (res.ok) history = result.history || [];
+        } catch (err) {
+          console.error(err);
+        }
       }
 
-      document.getElementById('portfolioVal').innerText = `$${totalPortfolio.toFixed(2)}`;
-      document.getElementById('pendingYield').innerText = `$${totalPendingYield.toFixed(2)}`;
+      renderDashboard(profile, holdings, history);
     }
 
-    loadDashboard();
+    function renderDashboard(profile, holdings, history) {
+      const mainBalance = Number(profile?.main_balance || 0);
+      const frozenBalance = Number(profile?.frozen_balance || 0);
+
+      let portfolioValue = 0;
+      let pendingYield = 0;
+
+      const holdingRows = (holdings || []).map(h => {
+        const price = Number(h.stocks?.current_price || 0);
+        const currentValue = h.quantity * price;
+
+        portfolioValue += currentValue;
+        pendingYield += Number(h.total_initial_invested || 0) * 0.05;
+
+        return {
+          name: h.stocks?.company_name || 'Unknown',
+          symbol: h.stocks?.symbol || '',
+          quantity: h.quantity,
+          lockIn: h.lock_in_days,
+          source: h.purchase_source,
+          currentValue
+        };
+      });
+
+      const totalValue = mainBalance + frozenBalance + portfolioValue;
+
+      // Hero
+      document.getElementById('userName').textContent = profile?.full_name || 'Investor';
+      document.getElementById('totalValue').textContent = formatMoney(totalValue);
+      document.getElementById('yieldChip').textContent = `+${formatMoney(pendingYield)} daily yield`;
+      document.getElementById('refChip').textContent = `Ref: ${profile?.referral_code || '---'}`;
+
+      if (profile?.created_at) {
+        const joined = new Date(profile.created_at).toLocaleDateString('en-NG', {
+          month: 'short',
+          year: 'numeric'
+        });
+        document.getElementById('memberSince').textContent = `Member since ${joined}`;
+      }
+
+      // Stat cards
+      document.getElementById('mainBal').textContent = formatMoney(mainBalance);
+      document.getElementById('frozenBal').textContent = formatMoney(frozenBalance);
+      document.getElementById('portfolioVal').textContent = formatMoney(portfolioValue);
+      document.getElementById('pendingYield').textContent = formatMoney(pendingYield);
+      document.getElementById('holdingsCount').textContent =
+        `${holdingRows.length} active holding${holdingRows.length === 1 ? '' : 's'}`;
+
+      // Holdings list
+      const holdingsBox = document.getElementById('holdingsList');
+
+      if (holdingRows.length === 0) {
+        holdingsBox.innerHTML = `
+          <div class="mini-empty">
+            No active holdings yet.<br>
+            <a href="/market.html">Buy your first stock</a>
+          </div>
+        `;
+      } else {
+        holdingRows
+          .sort((a, b) => b.currentValue - a.currentValue)
+          .slice(0, 4);
+
+        holdingsBox.innerHTML = holdingRows.map(h => {
+          const lockBadge = h.lockIn > 0
+            ? `<span class="badge badge-locked">${h.lockIn}d lock</span>`
+            : `<span class="badge badge-unlocked">Unlocked</span>`;
+
+          return `
+            <div class="mini-item">
+              <div>
+                <div class="title">${escapeHtml(h.name)}</div>
+                <div class="meta">
+                  ${h.quantity} share${h.quantity === 1 ? '' : 's'} • ${lockBadge}
+                </div>
+              </div>
+              <div class="amount">${formatMoney(h.currentValue)}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Activity list
+      const activityBox = document.getElementById('activityList');
+      const recent = (history || []).slice(0, 5);
+
+      if (recent.length === 0) {
+        activityBox.innerHTML = '<div class="mini-empty">No recent activity yet.</div>';
+      } else {
+        activityBox.innerHTML = recent.map(item => {
+          const sign = item.direction === 'credit' ? '+' : '-';
+          const amountClass = item.direction === 'credit' ? 'credit' : 'debit';
+
+          return `
+            <div class="mini-item">
+              <div>
+                <div class="title">${escapeHtml(item.label)}</div>
+                <div class="meta">${new Date(item.created_at).toLocaleString()}</div>
+              </div>
+              <div class="amount ${amountClass}">${sign}${formatMoney(item.amount)}</div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    await loadDashboard();
   </script>
 </body>
 </html>
