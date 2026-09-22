@@ -3119,3 +3119,153 @@ footer { background: var(--card-bg); border-top: 1px solid var(--border); paddin
     padding: 28px 22px;
   }
 }
+/* =========================================
+   PREMIUM ADMIN v2
+========================================= */
+
+.admin-subnav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 22px;
+}
+
+.admin-subnav a {
+  text-decoration: none;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  transition: 0.2s ease;
+}
+
+.admin-subnav a:hover {
+  color: var(--primary);
+  border-color: #c7d2fe;
+}
+
+.admin-subnav a.active {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.28);
+}
+
+/* Premium admin table */
+.admin-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-table th {
+  background: #f9fafb;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 800;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.admin-table td {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table tbody tr {
+  transition: 0.15s ease;
+}
+
+.admin-table tbody tr:hover {
+  background: #fafaff;
+}
+
+/* Request cards */
+.req-list {
+  display: grid;
+  gap: 12px;
+}
+
+.req-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+}
+
+.req-card .req-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.req-card .req-amount {
+  text-align: right;
+}
+
+.req-card .req-amount .amt {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.req-card .req-meta {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.req-card .req-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.req-card .req-actions .processed {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .req-card {
+    grid-template-columns: 1fr;
+  }
+
+  .req-card .req-amount {
+    text-align: left;
+  }
+
+  .req-card .req-actions {
+    justify-content: flex-start;
+  }
+}
