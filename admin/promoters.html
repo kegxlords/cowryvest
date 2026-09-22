@@ -10,12 +10,13 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="container" style="margin-top: 30px;">
-    <div class="page-header">
+  <main class="container page-container">
+    <div class="page-hero">
       <div>
         <h1>Promoter Frozen Balance</h1>
-        <p>Search a user and credit their frozen balance. Frozen balance can only be used for investments and returns to frozen balance on conversion.</p>
+        <p>Credit frozen balance. It can only be invested and returns to frozen on conversion.</p>
       </div>
+      <span class="chip frozen">Promoter Tools</span>
     </div>
 
     <nav class="admin-subnav">
@@ -27,31 +28,34 @@
 
     <div id="adminAlert" class="alert error"></div>
 
-    <section class="admin-panel">
-      <h2>Search User</h2>
-
-      <div class="admin-toolbar">
-        <div class="form-group">
-          <label for="searchQuery">Name, Email, or Referral Code</label>
-          <input type="text" id="searchQuery" class="form-control" placeholder="Search user..." />
+    <div class="deposit-layout">
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Find User</h2>
         </div>
 
-        <button class="btn btn-primary" id="searchBtn" onclick="searchUsers()">Search</button>
-      </div>
-
-      <div id="userResults" class="user-search-results"></div>
-    </section>
-
-    <section class="admin-panel">
-      <h2>Credit Frozen Balance</h2>
-
-      <div id="selectedUserBox" class="selected-user-box">
-        Selected user: <strong id="selectedUserName">-</strong><br>
-        Email: <span id="selectedUserEmail">-</span>
-      </div>
-
-      <form id="creditForm">
         <div class="admin-toolbar">
+          <div class="form-group">
+            <label for="searchQuery">Name, Email, or Referral Code</label>
+            <input type="text" id="searchQuery" class="form-control" placeholder="Search user..." />
+          </div>
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+
+        <div id="userResults" class="user-search-results"></div>
+      </section>
+
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Credit Frozen Balance</h2>
+        </div>
+
+        <div id="selectedUserBox" class="selected-user-box">
+          Selected: <strong id="selectedUserName">-</strong><br />
+          <span id="selectedUserEmail">-</span>
+        </div>
+
+        <form id="creditForm">
           <div class="form-group">
             <label for="creditAmount">Amount</label>
             <input type="number" id="creditAmount" class="form-control" min="0.01" step="0.01" required />
@@ -62,30 +66,21 @@
             <input type="text" id="creditNote" class="form-control" placeholder="e.g. Weekly promoter bonus" />
           </div>
 
-          <button type="submit" class="btn btn-dark" id="creditBtn">Credit Frozen Balance</button>
-        </div>
-      </form>
-    </section>
+          <button type="submit" class="btn btn-dark w-full" id="creditBtn">
+            Credit Frozen Balance
+          </button>
+        </form>
+      </section>
+    </div>
 
-    <section class="admin-panel">
-      <h2>Recent Frozen Credits</h2>
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Recent Frozen Credits</h2>
+        <button class="btn btn-secondary" id="reloadCredits">Refresh</button>
+      </div>
 
-      <div class="table-responsive">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>User</th>
-              <th>Amount</th>
-              <th>Note</th>
-            </tr>
-          </thead>
-          <tbody id="creditsBody">
-            <tr>
-              <td colspan="4" class="loading-text">Loading...</td>
-            </tr>
-          </tbody>
-        </table>
+      <div id="creditsList" class="mini-list">
+        <div class="mini-empty">Loading...</div>
       </div>
     </section>
   </main>
@@ -95,6 +90,7 @@
   <script type="module">
     import { initAdminUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
 
     await initAdminUI();
 
@@ -115,11 +111,57 @@
       alertBox.style.display = 'none';
     }
 
-    function formatMoney(value) {
-      return `$${Number(value || 0).toFixed(2)}`;
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
-    window.searchUsers = async function() {
+    function getInitials(name) {
+      return String(name || 'U')
+        .trim()
+        .split(' ')
+        .map(p => p[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+    }
+
+    async function apiGet(action) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(`/api/admin?action=${action}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
+    async function apiPost(payload) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
+    async function searchUsers() {
       hideAlert();
 
       const q = document.getElementById('searchQuery').value.trim();
@@ -127,21 +169,7 @@
       resultsBox.innerHTML = '<div class="loading-text">Searching...</div>';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch(`/api/admin?action=users&q=${encodeURIComponent(q)}`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to search users.');
-        }
-
+        const result = await apiGet(`users&q=${encodeURIComponent(q)}`);
         const users = result.users || [];
 
         if (users.length === 0) {
@@ -150,34 +178,49 @@
         }
 
         resultsBox.innerHTML = users.map(user => `
-          <div class="user-result" data-user-id="${user.id}">
-            <div>
-              <div class="name">${user.full_name || 'Unnamed user'}</div>
-              <div class="meta">${user.email}</div>
-              <div class="meta">Ref: ${user.referral_code} • Main: ${formatMoney(user.main_balance)} • Frozen: ${formatMoney(user.frozen_balance)}</div>
+          <div class="user-result ${selectedUser?.id === user.id ? 'selected' : ''}" data-user-id="${user.id}">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+              <div class="hist-icon" style="background: #eef2ff; color: #4f46e5;">
+                <span style="font-weight: 900; font-size: .8rem;">${escapeHtml(getInitials(user.full_name))}</span>
+              </div>
+              <div style="min-width: 0;">
+                <div class="name">${escapeHtml(user.full_name || 'Unnamed user')}</div>
+                <div class="meta">${escapeHtml(user.email)}</div>
+                <div class="meta">
+                  Ref: ${escapeHtml(user.referral_code)} •
+                  Main: ${formatMoney(user.main_balance)} •
+                  Frozen: ${formatMoney(user.frozen_balance)}
+                </div>
+              </div>
             </div>
 
-            <button class="btn btn-primary" onclick='selectUser(${JSON.stringify(user).replace(/'/g, "&#39;")})'>
-              Select
-            </button>
+            <button class="btn btn-primary" data-select="${user.id}">Select</button>
           </div>
         `).join('');
-      } catch (err) {
-        resultsBox.innerHTML = `<div style="color: var(--danger);">${err.message}</div>`;
-      }
-    };
 
-    window.selectUser = function(user) {
+        // Re-attach select handlers with fresh user objects
+        document.querySelectorAll('[data-select]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const user = users.find(u => u.id === btn.dataset.select);
+            selectUser(user);
+          });
+        });
+      } catch (err) {
+        resultsBox.innerHTML = `<div style="color: var(--danger);">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function selectUser(user) {
       selectedUser = user;
 
       document.getElementById('selectedUserName').textContent = user.full_name || 'Unnamed user';
       document.getElementById('selectedUserEmail').textContent = user.email;
       selectedUserBox.classList.add('active');
 
-      document.querySelectorAll('.user-result').forEach(el => el.classList.remove('selected'));
-      const row = document.querySelector(`.user-result[data-user-id="${user.id}"]`);
-      if (row) row.classList.add('selected');
-    };
+      document.querySelectorAll('.user-result').forEach(el => {
+        el.classList.toggle('selected', el.dataset.userId === user.id);
+      });
+    }
 
     creditForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -200,28 +243,12 @@
       creditBtn.textContent = 'Crediting...';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch('/api/admin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            action: 'credit_frozen',
-            target_user_id: selectedUser.id,
-            credit_amount: amount,
-            note
-          })
+        await apiPost({
+          action: 'credit_frozen',
+          target_user_id: selectedUser.id,
+          credit_amount: amount,
+          note
         });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to credit frozen balance.');
-        }
 
         showAlert('Frozen balance credited successfully.', 'success');
         creditForm.reset();
@@ -236,49 +263,53 @@
     });
 
     async function loadRecentCredits() {
-      const body = document.getElementById('creditsBody');
-      body.innerHTML = '<tr><td colspan="4" class="loading-text">Loading...</td></tr>';
+      const list = document.getElementById('creditsList');
+      list.innerHTML = '<div class="mini-empty">Loading...</div>';
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated.');
-
-        const res = await fetch('/api/admin?action=frozen_credits', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-
-        const result = await res.json();
-
-        if (!res.ok) {
-          throw new Error(result.error || 'Failed to load frozen credits.');
-        }
-
+        const result = await apiGet('frozen_credits');
         const credits = result.credits || [];
 
         if (credits.length === 0) {
-          body.innerHTML = '<tr><td colspan="4" class="empty-text">No frozen credits yet.</td></tr>';
+          list.innerHTML = '<div class="mini-empty">No frozen credits yet.</div>';
           return;
         }
 
-        body.innerHTML = credits.map(c => `
-          <tr>
-            <td>${new Date(c.created_at).toLocaleString()}</td>
-            <td>
-              <strong>${c.profiles?.full_name || 'User'}</strong><br>
-              <small style="color: var(--text-muted);">${c.profiles?.email || ''}</small>
-            </td>
-            <td class="credit">+${formatMoney(c.amount)}</td>
-            <td>${c.description || '-'}</td>
-          </tr>
+        list.innerHTML = credits.map(c => `
+          <div class="mini-item">
+            <div class="hist-icon" style="background: #eef2ff; color: #4f46e5;">
+              <span style="font-weight: 900; font-size: .8rem;">
+                ${escapeHtml(getInitials(c.profiles?.full_name))}
+              </span>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div class="title">${escapeHtml(c.profiles?.full_name || 'User')}</div>
+              <div class="meta">
+                ${escapeHtml(c.profiles?.email || '')} •
+                ${escapeHtml(c.description || 'No note')} •
+                ${new Date(c.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div class="amount credit">+${formatMoney(c.amount)}</div>
+          </div>
         `).join('');
       } catch (err) {
-        body.innerHTML = `<tr><td colspan="4" style="color: var(--danger);">${err.message}</td></tr>`;
+        list.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
       }
     }
+
+    document.getElementById('searchBtn').addEventListener('click', searchUsers);
+
+    document.getElementById('searchQuery').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchUsers();
+      }
+    });
+
+    document.getElementById('reloadCredits').addEventListener('click', loadRecentCredits);
 
     await loadRecentCredits();
   </script>
 </body>
-</html>
+            </html>
