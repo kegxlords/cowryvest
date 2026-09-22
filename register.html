@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Create Account | Cowryvest</title>
   <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
@@ -10,49 +10,124 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="auth-wrapper">
-    <div class="auth-card">
-      <h1>Create your account</h1>
-      <p class="subtitle">Start investing in minutes.</p>
+  <main class="auth-split-wrap">
+    <section class="auth-split">
 
-      <div id="authAlert" class="alert error"></div>
-
-      <form id="registerForm">
-        <div class="form-group">
-          <label for="fullName">Full Name</label>
-          <input type="text" id="fullName" class="form-control" required />
+      <!-- Brand panel -->
+      <aside class="auth-brand">
+        <div class="auth-brand-logo">
+          <span class="logo-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17l6-6 4 4 8-8"></path>
+              <path d="M14 7h7v7"></path>
+            </svg>
+          </span>
+          Cowryvest
         </div>
 
-        <div class="form-group">
-          <label for="email">Email</label>
-          <input type="email" id="email" class="form-control" required />
+        <h1>Start building<br />your portfolio.</h1>
+
+        <p>
+          Create your free account in minutes and join investors earning
+          daily income on company shares.
+        </p>
+
+        <ul class="auth-features">
+          <li>
+            <span class="feat-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
+                <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
+                <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
+              </svg>
+            </span>
+            Dual balances: Main and Frozen promoter balance
+          </li>
+          <li>
+            <span class="feat-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </span>
+            Fair lock-in periods based on shares purchased
+          </li>
+          <li>
+            <span class="feat-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path>
+              </svg>
+            </span>
+            Daily 5% income credited automatically at midnight
+          </li>
+        </ul>
+
+        <div class="auth-brand-foot">&copy; 2024 Cowryvest. All rights reserved.</div>
+      </aside>
+
+      <!-- Form panel -->
+      <div class="auth-form-side">
+        <div class="auth-form-card">
+          <h2>Create your account</h2>
+          <p class="subtitle">Start investing in minutes.</p>
+
+          <div id="authAlert" class="alert error"></div>
+
+          <div id="refPrefill" class="ref-prefill"></div>
+
+          <form id="registerForm">
+            <div class="form-group">
+              <label for="fullName">Full Name</label>
+              <input type="text" id="fullName" class="form-control" placeholder="Your full name" required />
+            </div>
+
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" id="email" class="form-control" placeholder="you@example.com" required />
+            </div>
+
+            <div class="form-group">
+              <label for="password">Password</label>
+              <div class="pass-wrap">
+                <input type="password" id="password" class="form-control" minlength="8" placeholder="Minimum 8 characters" required />
+                <button type="button" class="pass-toggle" data-target="password" aria-label="Show password">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="confirmPassword">Confirm Password</label>
+              <div class="pass-wrap">
+                <input type="password" id="confirmPassword" class="form-control" minlength="8" placeholder="Repeat password" required />
+                <button type="button" class="pass-toggle" data-target="confirmPassword" aria-label="Show password">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="referralCode">Referral Code (optional)</label>
+              <input type="text" id="referralCode" class="form-control" placeholder="CV123ABC" />
+            </div>
+
+            <button type="submit" class="btn btn-primary w-full" id="registerBtn">
+              Create Account
+            </button>
+          </form>
+
+          <div class="auth-footer">
+            Already have an account? <a href="/">Sign in</a>
+          </div>
         </div>
-
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" class="form-control" minlength="8" required />
-          <div class="form-help">Minimum 8 characters</div>
-        </div>
-
-        <div class="form-group">
-          <label for="confirmPassword">Confirm Password</label>
-          <input type="password" id="confirmPassword" class="form-control" minlength="8" required />
-        </div>
-
-        <div class="form-group">
-          <label for="referralCode">Referral Code (optional)</label>
-          <input type="text" id="referralCode" class="form-control" placeholder="CV123ABC" />
-        </div>
-
-        <button type="submit" class="btn btn-primary w-full" id="registerBtn">
-          Create Account
-        </button>
-      </form>
-
-      <div class="auth-footer">
-        Already have an account? <a href="/">Sign in</a>
       </div>
-    </div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
@@ -67,18 +142,7 @@
     const alertBox = document.getElementById('authAlert');
     const registerBtn = document.getElementById('registerBtn');
     const referralInput = document.getElementById('referralCode');
-
-    // Prefill referral code from URL: /register.html?ref=CV123ABC
-const urlParams = new URLSearchParams(window.location.search);
-const refFromUrl = urlParams.get('ref');
-
-if (refFromUrl) {
-  referralInput.value = refFromUrl.toUpperCase();
-}
-
-referralInput.addEventListener('input', () => {
-  referralInput.value = referralInput.value.toUpperCase();
-});
+    const refPrefill = document.getElementById('refPrefill');
 
     function showAlert(message, type = 'error') {
       alertBox.textContent = message;
@@ -89,6 +153,28 @@ referralInput.addEventListener('input', () => {
     function hideAlert() {
       alertBox.style.display = 'none';
     }
+
+    // Password visibility toggles
+    document.querySelectorAll('.pass-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.target);
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    });
+
+    // Prefill referral code from ?ref=CODE
+    const urlParams = new URLSearchParams(window.location.search);
+    const refFromUrl = urlParams.get('ref');
+
+    if (refFromUrl) {
+      referralInput.value = refFromUrl.toUpperCase();
+      refPrefill.textContent = `You are joining with referral code ${referralInput.value}. You're linked to your referrer automatically.`;
+      refPrefill.classList.add('active');
+    }
+
+    referralInput.addEventListener('input', () => {
+      referralInput.value = referralInput.value.toUpperCase();
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -105,8 +191,8 @@ referralInput.addEventListener('input', () => {
         return;
       }
 
-      if (!email) {
-        showAlert('Email is required.');
+      if (!email || !email.includes('@')) {
+        showAlert('Enter a valid email address.');
         return;
       }
 
@@ -124,7 +210,7 @@ referralInput.addEventListener('input', () => {
       registerBtn.textContent = 'Creating account...';
 
       try {
-        const res = await fetch('/api/auth.js', {
+        const res = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
