@@ -2,8 +2,7 @@
 import {
   supabaseAdmin,
   getAuthedUser,
-  getBody,
-  parseAmount
+  getBody
 } from '../lib/supabase-admin.js';
 
 export default async function handler(req, res) {
@@ -12,7 +11,7 @@ export default async function handler(req, res) {
   }
 
   try {
-// =====================================
+    // =====================================
     // GET ENDPOINTS
     // =====================================
     if (req.method === 'GET') {
@@ -74,16 +73,66 @@ export default async function handler(req, res) {
 
       // -------------------------------------
       // MIDNIGHT CRON
-      // Vercel calls GET /api/wealth with NO action param
+      // Vercel Cron calls GET /api/wealth with NO action param
       // -------------------------------------
       const authHeader = req.headers.authorization;
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized cron access' });
       }
 
+      // 1. Pay 5% daily yield on initial invested amounts
+      const { data: holdings, error: holdingsError } = await supabaseAdmin
+        .from('user_stocks')
+        .select('user_id, total_initial_invested');
+
+      if (holdingsError) throw holdingsError;
+
+      const yieldsByUser = {};
+
+      for (const holding of holdings || []) {
+        const yieldAmount =
+          Math.round(Number(holding.total_initial_invested) * 0.05 * 100) / 100;
+
+        if (yieldAmount <= 0) continue;
+
+        yieldsByUser[holding.user_id] =
+          (yieldsByUser[holding.user_id] || 0) + yieldAmount;
+      }
+
+      for (const [userId, totalYield] of Object.entries(yieldsByUser)) {
+        const roundedYield = Math.round(totalYield * 100) / 100;
+
+        const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+          p_user_id: userId,
+          p_amount: roundedYield,
+          p_balance_type: 'main'
+        });
+
+        if (creditError) throw creditError;
+
+        await supabaseAdmin.from('transactions').insert({
+          user_id: userId,
+          type: 'daily_yield',
+          amount: roundedYield,
+          balance_type: 'main',
+          status: 'completed',
+          description: 'Daily 5% investment yield'
+        });
+      }
+
+      // 2. Decrement all lock-in days by 1
+      const { error: decrementError } = await supabaseAdmin.rpc('decrement_lock_in_days');
+      if (decrementError) throw decrementError;
+
+      return res.status(200).json({
+        success: true,
+        message: 'Midnight processing complete',
+        users_credited: Object.keys(yieldsByUser).length
+      });
+    }
+
     // =====================================
-    // USER ACTIONS
-    // POST /api/wealth
+    // POST ENDPOINTS (BUY / SELL)
     // =====================================
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
@@ -124,21 +173,19 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (stockError) throw stockError;
+
       if (!stock) {
         return res.status(404).json({ error: 'Stock not found' });
       }
 
       const totalCost = Math.round(Number(stock.current_price) * quantity * 100) / 100;
 
-      // Deduct balance safely
-      const { data: debitSuccess, error: debitError } = await supabaseAdmin.rpc(
-        'debit_balance',
-        {
-          p_user_id: user.id,
-          p_amount: totalCost,
-          p_balance_type: purchaseSource
-        }
-      );
+      // Deduct balance atomically
+      const { data: debitSuccess, error: debitError } = await supabaseAdmin.rpc('debit_balance', {
+        p_user_id: user.id,
+        p_amount: totalCost,
+        p_balance_type: purchaseSource
+      });
 
       if (debitError) throw debitError;
 
@@ -146,7 +193,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
 
-      // Check existing holding for same stock + same source
+      // Existing holding with same stock + same source?
       const { data: existingHolding, error: existingError } = await supabaseAdmin
         .from('user_stocks')
         .select('*')
@@ -156,27 +203,23 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (existingError) {
-        // Compensate debit
         await supabaseAdmin.rpc('credit_balance', {
           p_user_id: user.id,
           p_amount: totalCost,
           p_balance_type: purchaseSource
         });
-
         throw existingError;
       }
 
       let savedHolding = null;
 
       if (existingHolding) {
-        // Additive lock-in logic:
-        // existing lock-in days + newly bought quantity
+        // Additive lock-in: existing days + new quantity
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('user_stocks')
           .update({
             quantity: existingHolding.quantity + quantity,
-            total_initial_invested:
-              Number(existingHolding.total_initial_invested) + totalCost,
+            total_initial_invested: Number(existingHolding.total_initial_invested) + totalCost,
             lock_in_days: existingHolding.lock_in_days + quantity
           })
           .eq('id', existingHolding.id)
@@ -189,7 +232,6 @@ export default async function handler(req, res) {
             p_amount: totalCost,
             p_balance_type: purchaseSource
           });
-
           throw updateError;
         }
 
@@ -214,7 +256,6 @@ export default async function handler(req, res) {
             p_amount: totalCost,
             p_balance_type: purchaseSource
           });
-
           throw insertError;
         }
 
@@ -268,6 +309,7 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (holdingError) throw holdingError;
+
       if (!holding) {
         return res.status(404).json({ error: 'Holding not found' });
       }
@@ -296,13 +338,11 @@ export default async function handler(req, res) {
         .eq('id', holding.id);
 
       if (deleteError) {
-        // Compensate credit if deletion fails
         await supabaseAdmin.rpc('debit_balance', {
           p_user_id: user.id,
           p_amount: payout,
           p_balance_type: destinationBalance
         });
-
         throw deleteError;
       }
 
