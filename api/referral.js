@@ -4,19 +4,35 @@ import {
   getAuthedUser
 } from '../lib/supabase-admin.js';
 
+/* =========================================
+   REFERRAL BONUS ENGINE
+   Called by api/admin.js when a deposit is approved.
+   Pays 10% of the approved deposit to the referrer's Main Balance.
+========================================= */
+
 export async function awardReferralBonus(depositRequestId, depositedUserId, depositAmount) {
   try {
+    if (!depositRequestId || !depositedUserId) {
+      return { awarded: false, reason: 'missing_ids' };
+    }
+
+    const amount = Number(depositAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { awarded: false, reason: 'invalid_amount' };
+    }
+
+    // 1. Load the request and check the paid flag
     const { data: request, error: requestError } = await supabaseAdmin
       .from('financial_requests')
-      .select('referral_bonus_paid')
+      .select('id, referral_bonus_paid')
       .eq('id', depositRequestId)
       .maybeSingle();
 
     if (requestError) throw requestError;
-    if (!request || request.referral_bonus_paid) {
-      return { awarded: false, reason: 'already_paid_or_missing' };
-    }
+    if (!request) return { awarded: false, reason: 'request_not_found' };
+    if (request.referral_bonus_paid) return { awarded: false, reason: 'already_paid' };
 
+    // 2. Find who referred this user
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('referred_by')
@@ -31,21 +47,22 @@ export async function awardReferralBonus(depositRequestId, depositedUserId, depo
       return { awarded: false, reason: 'no_referrer' };
     }
 
-    const bonus = Math.round(Number(depositAmount) * 0.10 * 100) / 100;
+    // 3. Calculate 10% cashback
+    const bonus = Math.round(amount * 0.10 * 100) / 100;
+    if (bonus <= 0) return { awarded: false, reason: 'zero_bonus' };
 
-    if (bonus <= 0) {
-      return { awarded: false, reason: 'zero_bonus' };
-    }
-
-    const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
+    // 4. Credit the referrer's Main Balance
+    const { data: credited, error: creditError } = await supabaseAdmin.rpc('credit_balance', {
       p_user_id: referrerId,
       p_amount: bonus,
       p_balance_type: 'main'
     });
 
     if (creditError) throw creditError;
+    if (!credited) throw new Error('Unable to credit referrer balance');
 
-    await supabaseAdmin.from('transactions').insert({
+    // 5. Ledger entry for the referrer
+    const { error: txError } = await supabaseAdmin.from('transactions').insert({
       user_id: referrerId,
       type: 'referral_bonus',
       amount: bonus,
@@ -55,10 +72,15 @@ export async function awardReferralBonus(depositRequestId, depositedUserId, depo
       reference_id: depositRequestId
     });
 
-    await supabaseAdmin
+    if (txError) throw txError;
+
+    // 6. Mark as paid so it can never pay twice
+    const { error: flagError } = await supabaseAdmin
       .from('financial_requests')
       .update({ referral_bonus_paid: true })
       .eq('id', depositRequestId);
+
+    if (flagError) throw flagError;
 
     return { awarded: true, bonus, referrer_id: referrerId };
   } catch (err) {
@@ -66,6 +88,11 @@ export async function awardReferralBonus(depositRequestId, depositedUserId, depo
     return { awarded: false, error: err.message };
   }
 }
+
+/* =========================================
+   HTTP HANDLER
+   GET /api/referral?action=dashboard
+========================================= */
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -85,14 +112,16 @@ export default async function handler(req, res) {
     const action = req.query.action || 'dashboard';
 
     if (action === 'dashboard') {
+      // 1. Own referral code
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
-        .select('referral_code, main_balance')
+        .select('referral_code')
         .eq('id', user.id)
         .maybeSingle();
 
       if (profileError) throw profileError;
 
+      // 2. Everyone referred by this user
       const { data: referrals, error: referralsError } = await supabaseAdmin
         .from('profiles')
         .select('id, full_name, created_at')
@@ -103,13 +132,15 @@ export default async function handler(req, res) {
 
       const referralIds = (referrals || []).map(r => r.id);
 
-      let totalDepositAmount = 0;
+      // 3. Approved deposits made by those referrals
       let approvedDepositCount = 0;
+      let totalDepositAmount = 0;
+      const volumeByReferral = {};
 
       if (referralIds.length > 0) {
         const { data: approvedDeposits, error: depositsError } = await supabaseAdmin
           .from('financial_requests')
-          .select('amount')
+          .select('user_id, amount')
           .in('user_id', referralIds)
           .eq('type', 'deposit')
           .eq('status', 'approved');
@@ -117,10 +148,15 @@ export default async function handler(req, res) {
         if (depositsError) throw depositsError;
 
         approvedDepositCount = approvedDeposits?.length || 0;
-        totalDepositAmount =
-          approvedDeposits?.reduce((sum, d) => sum + Number(d.amount), 0) || 0;
+
+        for (const deposit of approvedDeposits || []) {
+          const value = Number(deposit.amount);
+          totalDepositAmount += value;
+          volumeByReferral[deposit.user_id] = (volumeByReferral[deposit.user_id] || 0) + value;
+        }
       }
 
+      // 4. Total bonus this user has earned
       const { data: bonusTransactions, error: bonusError } = await supabaseAdmin
         .from('transactions')
         .select('amount')
@@ -132,11 +168,9 @@ export default async function handler(req, res) {
       const totalBonusEarned =
         bonusTransactions?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      return res.status(200).json({
-        success: true,
-        referral_code: profile?.referral_code || '',
+      // 5. Build absolute referral link (fixes missing domain)
       const baseUrl =
-        process.env.APP_URL ||
+        process.env.PUBLIC_SITE_URL ||
         (req.headers.host ? `https://${req.headers.host}` : '') ||
         req.headers.origin ||
         '';
@@ -151,15 +185,12 @@ export default async function handler(req, res) {
           total_deposit_amount: Math.round(totalDepositAmount * 100) / 100,
           total_bonus_earned: Math.round(totalBonusEarned * 100) / 100
         },
-        referrals: referrals || []
-      });
-      summary: {
-          total_referrals: referrals?.length || 0,
-          approved_deposits: approvedDepositCount,
-          total_deposit_amount: Math.round(totalDepositAmount * 100) / 100,
-          total_bonus_earned: Math.round(totalBonusEarned * 100) / 100
-        },
-        referrals: referrals || []
+        referrals: (referrals || []).map(r => ({
+          id: r.id,
+          full_name: r.full_name,
+          created_at: r.created_at,
+          approved_deposit_volume: Math.round((volumeByReferral[r.id] || 0) * 100) / 100
+        }))
       });
     }
 
