@@ -10,26 +10,38 @@
 
   <div id="header-placeholder"></div>
 
-  <main class="container" style="margin-top: 30px;">
-    <div class="page-header">
+  <main class="container page-container">
+    <div class="page-hero">
       <div>
         <h1>Withdraw Funds</h1>
-        <p>Withdrawals are deducted from Main Balance and processed after admin approval.</p>
-      </div>
-      <div class="balance-pill">
-        Available: <span id="mainBalance">$0.00</span>
+        <p>Withdrawals are paid from your Main Balance after admin approval.</p>
       </div>
     </div>
 
-    <div class="form-card">
-      <div id="withdrawAlert" class="alert error"></div>
+    <section class="withdraw-hero">
+      <span class="label">Available Main Balance</span>
+      <div class="value" id="mainBalance">₦0.00</div>
 
-      <form id="withdrawForm">
-        <div class="form-row">
+      <div class="quick-amounts">
+        <button type="button" class="quick-amt" data-percent="25">25%</button>
+        <button type="button" class="quick-amt" data-percent="50">50%</button>
+        <button type="button" class="quick-amt" data-percent="75">75%</button>
+        <button type="button" class="quick-amt" data-percent="100">Max</button>
+      </div>
+    </section>
+
+    <div class="deposit-layout">
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Withdrawal Request</h2>
+        </div>
+
+        <div id="withdrawAlert" class="alert error"></div>
+
+        <form id="withdrawForm">
           <div class="form-group">
             <label for="amount">Amount</label>
             <input type="number" id="amount" class="form-control" min="1" step="0.01" required />
-            <div class="input-hint">Maximum: <span id="maxAmount">$0.00</span></div>
           </div>
 
           <div class="form-group">
@@ -38,14 +50,11 @@
               <option value="bank_transfer">Bank Transfer</option>
               <option value="usdt_trc20">USDT TRC20</option>
               <option value="usdt_erc20">USDT ERC20</option>
-              <option value="bitcoin">Bitcoin</option>
             </select>
           </div>
-        </div>
 
-        <div class="form-row">
           <div class="form-group">
-            <label for="accountName">Account Name / Wallet Owner</label>
+            <label for="accountName">Account Name</label>
             <input type="text" id="accountName" class="form-control" required />
           </div>
 
@@ -53,22 +62,26 @@
             <label for="accountNumber">Account Number / Wallet Address</label>
             <input type="text" id="accountNumber" class="form-control" required />
           </div>
+
+          <div class="form-group">
+            <label for="bankName">Bank Name / Network</label>
+            <input type="text" id="bankName" class="form-control" placeholder="e.g. GTBank / TRON" />
+          </div>
+
+          <button type="submit" class="btn btn-primary w-full" id="withdrawBtn">
+            Submit Withdrawal Request
+          </button>
+        </form>
+      </section>
+
+      <section class="section-card">
+        <div class="section-head">
+          <h2>Recent Withdrawals</h2>
         </div>
-
-        <div class="form-group">
-          <label for="bankName">Bank Name / Network</label>
-          <input type="text" id="bankName" class="form-control" placeholder="e.g. GTBank / TRON" />
+        <div id="withdrawRequests" class="mini-list">
+          <div class="mini-empty">Loading...</div>
         </div>
-
-        <button type="submit" class="btn btn-primary" id="withdrawBtn">
-          Submit Withdrawal Request
-        </button>
-      </form>
-    </div>
-
-    <h2 style="margin-top: 30px; margin-bottom: 8px;">Recent Withdrawal Requests</h2>
-    <div id="withdrawRequests" class="request-list">
-      <p>Loading...</p>
+      </section>
     </div>
   </main>
 
@@ -77,6 +90,7 @@
   <script type="module">
     import { initUI } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
 
     await initUI();
 
@@ -97,8 +111,13 @@
       alertBox.style.display = 'none';
     }
 
-    function formatMoney(value) {
-      return `$${Number(value || 0).toFixed(2)}`;
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     function statusBadge(status) {
@@ -116,14 +135,12 @@
         .single();
 
       mainBalance = Number(profile?.main_balance || 0);
-
       document.getElementById('mainBalance').textContent = formatMoney(mainBalance);
-      document.getElementById('maxAmount').textContent = formatMoney(mainBalance);
     }
 
     async function loadRequests() {
       const container = document.getElementById('withdrawRequests');
-      container.innerHTML = '<p>Loading...</p>';
+      container.innerHTML = '<div class="mini-empty">Loading...</div>';
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -134,43 +151,45 @@
         .eq('user_id', user.id)
         .eq('type', 'withdrawal')
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(10);
 
       if (error) {
-        container.innerHTML = `<p style="color: var(--danger);">Error loading requests: ${error.message}</p>`;
+        container.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
         return;
       }
 
       if (!requests || requests.length === 0) {
-        container.innerHTML = '<div class="empty-state">No withdrawal requests yet.</div>';
+        container.innerHTML = '<div class="mini-empty">No withdrawal requests yet.</div>';
         return;
       }
 
-      container.innerHTML = requests.map(r => `
-        <div class="request-item">
-          <div class="left">
-            <div class="title">Withdrawal Request</div>
-            <div class="meta">
-              ${r.payment_method || 'Payout'} • ${new Date(r.created_at).toLocaleString()}
-            </div>
-            ${r.destination_details?.account_number ? `<div class="meta">To: ${r.destination_details.account_number}</div>` : ''}
-          </div>
+      container.innerHTML = requests.map(r => {
+        const d = r.destination_details || {};
 
-          <div style="text-align: right;">
-            <div class="amount debit">-${formatMoney(r.amount)}</div>
-            <div style="margin-top: 8px;">${statusBadge(r.status)}</div>
+        return `
+          <div class="mini-item">
+            <div>
+              <div class="title">Withdrawal • ${escapeHtml(d.account_name || '-')}</div>
+              <div class="meta">
+                ${escapeHtml(d.account_number || '-')} • ${new Date(r.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="amount debit">-${formatMoney(r.amount)}</div>
+              <div style="margin-top:6px;">${statusBadge(r.status)}</div>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
-    amountInput.addEventListener('input', () => {
-      const value = Number.parseFloat(amountInput.value || 0);
-      if (value > mainBalance) {
-        showAlert('Amount exceeds available Main Balance.');
-      } else {
+    document.querySelectorAll('.quick-amt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const percent = Number(btn.dataset.percent) / 100;
+        const value = Math.floor(mainBalance * percent * 100) / 100;
+        amountInput.value = value > 0 ? value : '';
         hideAlert();
-      }
+      });
     });
 
     form.addEventListener('submit', async (e) => {
@@ -189,7 +208,12 @@
       }
 
       if (amount > mainBalance) {
-        showAlert('Insufficient Main Balance.');
+        showAlert('Amount exceeds available Main Balance.');
+        return;
+      }
+
+      if (!account_name || !account_number) {
+        showAlert('Account name and account number are required.');
         return;
       }
 
@@ -224,7 +248,7 @@
           throw new Error(result.error || 'Failed to submit withdrawal request.');
         }
 
-        showAlert('Withdrawal request submitted successfully.', 'success');
+        showAlert('Withdrawal request submitted for approval.', 'success');
         form.reset();
         await loadProfile();
         await loadRequests();
