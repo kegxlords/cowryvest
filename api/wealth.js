@@ -12,69 +12,74 @@ export default async function handler(req, res) {
   }
 
   try {
-    // =====================================
-    // MIDNIGHT CRON
-    // GET /api/wealth?action=midnight-cron
+// =====================================
+    // GET ENDPOINTS
     // =====================================
     if (req.method === 'GET') {
+      const action = req.query.action;
+
+      // -------------------------------------
+      // STOCKS LIST
+      // GET /api/wealth?action=stocks
+      // -------------------------------------
+      if (action === 'stocks') {
+        const user = await getAuthedUser(req);
+        if (!user) {
+          return res.status(401).json({ error: 'Unauthenticated' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('stocks')
+          .select('id, company_name, symbol, current_price, updated_at')
+          .order('company_name', { ascending: true });
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, stocks: data || [] });
+      }
+
+      // -------------------------------------
+      // USER HOLDINGS
+      // GET /api/wealth?action=holdings
+      // -------------------------------------
+      if (action === 'holdings') {
+        const user = await getAuthedUser(req);
+        if (!user) {
+          return res.status(401).json({ error: 'Unauthenticated' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('user_stocks')
+          .select(`
+            id,
+            stock_id,
+            quantity,
+            total_initial_invested,
+            purchase_source,
+            lock_in_days,
+            created_at,
+            stocks (
+              company_name,
+              symbol,
+              current_price
+            )
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, holdings: data || [] });
+      }
+
+      // -------------------------------------
+      // MIDNIGHT CRON
+      // Vercel calls GET /api/wealth with NO action param
+      // -------------------------------------
       const authHeader = req.headers.authorization;
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized cron access' });
       }
-
-      // 1. Calculate and pay 5% daily yield
-      const { data: holdings, error: holdingsError } = await supabaseAdmin
-        .from('user_stocks')
-        .select('user_id, total_initial_invested');
-
-      if (holdingsError) throw holdingsError;
-
-      const yieldsByUser = {};
-
-      for (const holding of holdings || []) {
-        const yieldAmount =
-          Math.round(Number(holding.total_initial_invested) * 0.05 * 100) / 100;
-
-        if (yieldAmount <= 0) continue;
-
-        yieldsByUser[holding.user_id] =
-          (yieldsByUser[holding.user_id] || 0) + yieldAmount;
-      }
-
-      for (const [userId, totalYield] of Object.entries(yieldsByUser)) {
-        const roundedYield = Math.round(totalYield * 100) / 100;
-
-        const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
-          p_user_id: userId,
-          p_amount: roundedYield,
-          p_balance_type: 'main'
-        });
-
-        if (creditError) throw creditError;
-
-        await supabaseAdmin.from('transactions').insert({
-          user_id: userId,
-          type: 'daily_yield',
-          amount: roundedYield,
-          balance_type: 'main',
-          status: 'completed',
-          description: 'Daily 5% investment yield'
-        });
-      }
-
-      // 2. Decrease all lock-in days by 1
-      const { error: decrementError } = await supabaseAdmin.rpc(
-        'decrement_lock_in_days'
-      );
-
-      if (decrementError) throw decrementError;
-
-      return res.status(200).json({
-        success: true,
-        message: 'Midnight processing complete',
-        users_credited: Object.keys(yieldsByUser).length
-      });
-    }
 
     // =====================================
     // USER ACTIONS
