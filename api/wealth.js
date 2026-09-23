@@ -36,9 +36,11 @@ export default async function handler(req, res) {
 
         // Self-healing daily yield: runs once per calendar day,
         // no-op afterwards (guard lives in the DB function).
-        await supabaseAdmin.rpc('process_midnight_yield').catch((err) => {
+        try {
+          await supabaseAdmin.rpc('process_midnight_yield');
+        } catch (err) {
           console.error('Midnight self-heal failed:', err.message);
-        });
+}
 
         if (action === 'stocks') {
           const { data, error } = await supabaseAdmin
