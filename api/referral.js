@@ -128,24 +128,42 @@ export default async function handler(req, res) {
       // 3. Approved deposits made by those referrals
       let approvedDepositCount = 0;
       let totalDepositAmount = 0;
-      const volumeByReferral = {};
+      const statsByReferral = {};
 
       if (referralIds.length > 0) {
-        const { data: approvedDeposits, error: depositsError } = await supabaseAdmin
+        const { data: deposits, error: depositsError } = await supabaseAdmin
           .from('financial_requests')
-          .select('user_id, amount')
+          .select('user_id, amount, status, created_at')
           .in('user_id', referralIds)
           .eq('type', 'deposit')
-          .eq('status', 'approved');
+          .in('status', ['approved', 'pending']);
 
         if (depositsError) throw depositsError;
 
-        approvedDepositCount = approvedDeposits?.length || 0;
+        for (const d of deposits || []) {
+          const value = Number(d.amount);
 
-        for (const deposit of approvedDeposits || []) {
-          const value = Number(deposit.amount);
-          totalDepositAmount += value;
-          volumeByReferral[deposit.user_id] = (volumeByReferral[deposit.user_id] || 0) + value;
+          const s = statsByReferral[d.user_id] || (statsByReferral[d.user_id] = {
+            approved_count: 0,
+            approved_volume: 0,
+            pending_count: 0,
+            pending_volume: 0,
+            last_deposit_at: null
+          });
+
+          if (!s.last_deposit_at || d.created_at > s.last_deposit_at) {
+            s.last_deposit_at = d.created_at;
+          }
+
+          if (d.status === 'approved') {
+            s.approved_count += 1;
+            s.approved_volume += value;
+            approvedDepositCount += 1;
+            totalDepositAmount += value;
+          } else {
+            s.pending_count += 1;
+            s.pending_volume += value;
+          }
         }
       }
 
@@ -178,12 +196,27 @@ export default async function handler(req, res) {
           total_deposit_amount: Math.round(totalDepositAmount * 100) / 100,
           total_bonus_earned: Math.round(totalBonusEarned * 100) / 100
         },
-        referrals: (referrals || []).map(r => ({
-          id: r.id,
-          full_name: r.full_name,
-          created_at: r.created_at,
-          approved_deposit_volume: Math.round((volumeByReferral[r.id] || 0) * 100) / 100
-        }))
+        referrals: (referrals || []).map(r => {
+          const s = statsByReferral[r.id] || {
+            approved_count: 0,
+            approved_volume: 0,
+            pending_count: 0,
+            pending_volume: 0,
+            last_deposit_at: null
+          };
+
+          return {
+            id: r.id,
+            full_name: r.full_name,
+            created_at: r.created_at,
+            has_deposited: s.approved_count > 0,
+            approved_deposit_count: s.approved_count,
+            approved_deposit_volume: Math.round(s.approved_volume * 100) / 100,
+            pending_deposit_count: s.pending_count,
+            pending_deposit_volume: Math.round(s.pending_volume * 100) / 100,
+            last_deposit_at: s.last_deposit_at
+          };
+        })
       });
     }
 
