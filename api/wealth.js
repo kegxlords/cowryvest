@@ -1,4 +1,12 @@
 // api/wealth.js
+//
+// ENDPOINTS:
+//   GET  /api/wealth?action=stocks    -> listed stocks (authenticated)
+//   GET  /api/wealth?action=holdings  -> user's holdings (authenticated)
+//   GET  /api/wealth                  -> midnight cron (Vercel, Bearer CRON_SECRET)
+//   POST /api/wealth { action: 'buy'  } -> purchase shares
+//   POST /api/wealth { action: 'sell' } -> convert unlocked shares
+//
 import {
   supabaseAdmin,
   getAuthedUser,
@@ -18,33 +26,29 @@ export default async function handler(req, res) {
       const action = req.query.action;
 
       // -------------------------------------
-      // STOCKS LIST
-      // GET /api/wealth?action=stocks
+      // STOCKS LIST + USER HOLDINGS
       // -------------------------------------
-      if (action === 'stocks') {
+      if (action === 'stocks' || action === 'holdings') {
         const user = await getAuthedUser(req);
         if (!user) {
           return res.status(401).json({ error: 'Unauthenticated' });
         }
 
-        const { data, error } = await supabaseAdmin
-          .from('stocks')
-          .select('id, company_name, symbol, current_price, updated_at')
-          .order('company_name', { ascending: true });
+        // Self-healing daily yield: runs once per calendar day,
+        // no-op afterwards (guard lives in the DB function).
+        await supabaseAdmin.rpc('process_midnight_yield').catch((err) => {
+          console.error('Midnight self-heal failed:', err.message);
+        });
 
-        if (error) throw error;
+        if (action === 'stocks') {
+          const { data, error } = await supabaseAdmin
+            .from('stocks')
+            .select('id, company_name, symbol, current_price, updated_at')
+            .order('company_name', { ascending: true });
 
-        return res.status(200).json({ success: true, stocks: data || [] });
-      }
+          if (error) throw error;
 
-      // -------------------------------------
-      // USER HOLDINGS
-      // GET /api/wealth?action=holdings
-      // -------------------------------------
-      if (action === 'holdings') {
-        const user = await getAuthedUser(req);
-        if (!user) {
-          return res.status(401).json({ error: 'Unauthenticated' });
+          return res.status(200).json({ success: true, stocks: data || [] });
         }
 
         const { data, error } = await supabaseAdmin
@@ -74,65 +78,25 @@ export default async function handler(req, res) {
       // -------------------------------------
       // MIDNIGHT CRON
       // Vercel Cron calls GET /api/wealth with NO action param
+      // and header: Authorization: Bearer <CRON_SECRET>
       // -------------------------------------
       const authHeader = req.headers.authorization;
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized cron access' });
       }
 
-      // 1. Pay 5% daily yield on initial invested amounts
-      const { data: holdings, error: holdingsError } = await supabaseAdmin
-        .from('user_stocks')
-        .select('user_id, total_initial_invested');
-
-      if (holdingsError) throw holdingsError;
-
-      const yieldsByUser = {};
-
-      for (const holding of holdings || []) {
-        const yieldAmount =
-          Math.round(Number(holding.total_initial_invested) * 0.05 * 100) / 100;
-
-        if (yieldAmount <= 0) continue;
-
-        yieldsByUser[holding.user_id] =
-          (yieldsByUser[holding.user_id] || 0) + yieldAmount;
-      }
-
-      for (const [userId, totalYield] of Object.entries(yieldsByUser)) {
-        const roundedYield = Math.round(totalYield * 100) / 100;
-
-        const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
-          p_user_id: userId,
-          p_amount: roundedYield,
-          p_balance_type: 'main'
-        });
-
-        if (creditError) throw creditError;
-
-        await supabaseAdmin.from('transactions').insert({
-          user_id: userId,
-          type: 'daily_yield',
-          amount: roundedYield,
-          balance_type: 'main',
-          status: 'completed',
-          description: 'Daily 5% investment yield'
-        });
-      }
-
-      // 2. Decrement all lock-in days by 1
-      const { error: decrementError } = await supabaseAdmin.rpc('decrement_lock_in_days');
-      if (decrementError) throw decrementError;
+      const { data: result, error: cronError } = await supabaseAdmin.rpc('process_midnight_yield');
+      if (cronError) throw cronError;
 
       return res.status(200).json({
         success: true,
         message: 'Midnight processing complete',
-        users_credited: Object.keys(yieldsByUser).length
+        result
       });
     }
 
     // =====================================
-    // POST ENDPOINTS (BUY / SELL)
+    // POST ENDPOINTS
     // =====================================
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
@@ -180,7 +144,7 @@ export default async function handler(req, res) {
 
       const totalCost = Math.round(Number(stock.current_price) * quantity * 100) / 100;
 
-      // Deduct balance atomically
+      // 1. Deduct balance atomically
       const { data: debitSuccess, error: debitError } = await supabaseAdmin.rpc('debit_balance', {
         p_user_id: user.id,
         p_amount: totalCost,
@@ -193,7 +157,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
 
-      // Existing holding with same stock + same source?
+      // 2. Existing holding with same stock + same source?
       const { data: existingHolding, error: existingError } = await supabaseAdmin
         .from('user_stocks')
         .select('*')
@@ -214,7 +178,7 @@ export default async function handler(req, res) {
       let savedHolding = null;
 
       if (existingHolding) {
-        // Additive lock-in: existing days + new quantity
+        // Additive lock-in: existing days + newly bought quantity
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('user_stocks')
           .update({
@@ -262,7 +226,8 @@ export default async function handler(req, res) {
         savedHolding = inserted;
       }
 
-      await supabaseAdmin.from('transactions').insert({
+      // 3. Ledger entry for the purchase
+      const { error: txError } = await supabaseAdmin.from('transactions').insert({
         user_id: user.id,
         type: 'stock_purchase',
         amount: totalCost,
@@ -271,6 +236,8 @@ export default async function handler(req, res) {
         description: `Bought ${quantity} shares of ${stock.company_name}`,
         reference_id: savedHolding?.id || null
       });
+
+      if (txError) throw txError;
 
       return res.status(200).json({
         success: true,
@@ -324,20 +291,33 @@ export default async function handler(req, res) {
       const payout = Math.round(holding.quantity * currentPrice * 100) / 100;
       const destinationBalance = holding.purchase_source;
 
-      const { error: creditError } = await supabaseAdmin.rpc('credit_balance', {
-        p_user_id: user.id,
-        p_amount: payout,
-        p_balance_type: destinationBalance
-      });
+      // 1. Credit payout + write ledger row atomically
+      const { data: credited, error: creditError } = await supabaseAdmin.rpc(
+        'credit_balance_with_transaction',
+        {
+          p_user_id: user.id,
+          p_amount: payout,
+          p_balance_type: destinationBalance,
+          p_tx_type: 'stock_sale',
+          p_description: `Converted ${holding.quantity} shares of ${holding.stocks?.company_name || 'stock'}`,
+          p_reference_id: holding.id
+        }
+      );
 
       if (creditError) throw creditError;
 
+      if (!credited) {
+        return res.status(500).json({ error: 'Unable to credit payout' });
+      }
+
+      // 2. Remove the holding
       const { error: deleteError } = await supabaseAdmin
         .from('user_stocks')
         .delete()
         .eq('id', holding.id);
 
       if (deleteError) {
+        // Compensate: take the payout back so money never appears from nowhere
         await supabaseAdmin.rpc('debit_balance', {
           p_user_id: user.id,
           p_amount: payout,
@@ -345,16 +325,6 @@ export default async function handler(req, res) {
         });
         throw deleteError;
       }
-
-      await supabaseAdmin.from('transactions').insert({
-        user_id: user.id,
-        type: 'stock_sale',
-        amount: payout,
-        balance_type: destinationBalance,
-        status: 'completed',
-        description: `Converted ${holding.quantity} shares of ${holding.stocks?.company_name || 'stock'}`,
-        reference_id: holding.id
-      });
 
       return res.status(200).json({
         success: true,
