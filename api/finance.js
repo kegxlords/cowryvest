@@ -40,8 +40,16 @@ export default async function handler(req, res) {
       const paymentMethod = cleanText(body.payment_method, 80);
       const depositorName = cleanText(body.depositor_name, 120);
 
+      const MIN_DEPOSIT = 1000;
+
       if (!amount) {
         return res.status(400).json({ error: 'Valid deposit amount is required' });
+      }
+
+      if (amount < MIN_DEPOSIT) {
+        return res.status(400).json({
+          error: `Minimum deposit is ₦${MIN_DEPOSIT.toLocaleString()}`
+        });
       }
 
       if (!paymentMethod) {
