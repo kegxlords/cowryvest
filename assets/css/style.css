@@ -3269,3 +3269,7 @@ footer { background: var(--card-bg); border-top: 1px solid var(--border); paddin
     justify-content: flex-start;
   }
 }
+.status-none {
+  background: #f3f4f6;
+  color: #6b7280;
+}
