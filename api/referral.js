@@ -51,28 +51,21 @@ export async function awardReferralBonus(depositRequestId, depositedUserId, depo
     const bonus = Math.round(amount * 0.10 * 100) / 100;
     if (bonus <= 0) return { awarded: false, reason: 'zero_bonus' };
 
-    // 4. Credit the referrer's Main Balance
-    const { data: credited, error: creditError } = await supabaseAdmin.rpc('credit_balance', {
-      p_user_id: referrerId,
-      p_amount: bonus,
-      p_balance_type: 'main'
-    });
+    // 4. Credit referrer's Main Balance AND write the ledger row atomically
+    const { data: credited, error: creditError } = await supabaseAdmin.rpc(
+      'credit_balance_with_transaction',
+      {
+        p_user_id: referrerId,
+        p_amount: bonus,
+        p_balance_type: 'main',
+        p_tx_type: 'referral_bonus',
+        p_description: '10% referral deposit cashback',
+        p_reference_id: depositRequestId
+      }
+    );
 
     if (creditError) throw creditError;
     if (!credited) throw new Error('Unable to credit referrer balance');
-
-    // 5. Ledger entry for the referrer
-    const { error: txError } = await supabaseAdmin.from('transactions').insert({
-      user_id: referrerId,
-      type: 'referral_bonus',
-      amount: bonus,
-      balance_type: 'main',
-      status: 'completed',
-      description: '10% referral deposit cashback',
-      reference_id: depositRequestId
-    });
-
-    if (txError) throw txError;
 
     // 6. Mark as paid so it can never pay twice
     const { error: flagError } = await supabaseAdmin
