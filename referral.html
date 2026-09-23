@@ -24,7 +24,7 @@
         <button class="btn btn-light" id="copyBtn">Copy Link</button>
       </div>
 
-      <div class="share-row" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+      <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
         <button class="btn btn-whatsapp" id="whatsappBtn">Share on WhatsApp</button>
         <button class="btn btn-light" id="copyCodeBtn">Copy Code</button>
       </div>
@@ -53,8 +53,8 @@
           </svg>
         </div>
         <div>
-          <h3>Approved Deposits</h3>
-          <div class="value" id="approvedDeposits">0</div>
+          <h3>Deposited Users</h3>
+          <div class="value" id="depositedUsers">0</div>
         </div>
       </div>
 
@@ -107,6 +107,7 @@
       <section class="section-card">
         <div class="section-head">
           <h2>Referred Users</h2>
+          <button class="btn btn-secondary" id="reloadReferrals">Refresh</button>
         </div>
 
         <div id="referralList" class="mini-list">
@@ -157,57 +158,89 @@
     }
 
     async function loadReferralDashboard() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const res = await fetch('/api/referral?action=dashboard', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        document.getElementById('referralList').innerHTML =
-          `<div class="mini-empty">${escapeHtml(result.error || 'Failed to load referral data.')}</div>`;
-        return;
-      }
-
-      referralLink = result.referral_link || '';
-      referralCode = result.referral_code || '';
-
-      document.getElementById('referralLink').value = referralLink;
-      document.getElementById('totalReferrals').textContent = result.summary.total_referrals;
-      document.getElementById('approvedDeposits').textContent = result.summary.approved_deposits;
-      document.getElementById('totalDepositAmount').textContent = formatMoney(result.summary.total_deposit_amount);
-      document.getElementById('totalBonusEarned').textContent = formatMoney(result.summary.total_bonus_earned);
-
       const list = document.getElementById('referralList');
+      list.innerHTML = '<div class="mini-empty">Loading...</div>';
 
-      if (!result.referrals || result.referrals.length === 0) {
-        list.innerHTML = `
-          <div class="mini-empty">
-            No referrals yet. Share your link to start earning.<br />
-            <a href="#" id="emptyShare">Share on WhatsApp</a>
-          </div>
-        `;
-        document.getElementById('emptyShare')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          shareWhatsApp();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated.');
+
+        const res = await fetch('/api/referral?action=dashboard', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
         });
-        return;
-      }
 
-      list.innerHTML = result.referrals.map(r => `
-        <div class="mini-item">
-          <div class="hist-icon credit" style="background: #eef2ff; color: #4f46e5;">
-            <span style="font-weight: 900; font-size: .8rem;">${escapeHtml(getInitials(r.full_name))}</span>
-          </div>
-          <div style="flex: 1; min-width: 0;">
-            <div class="title">${escapeHtml(r.full_name || 'User')}</div>
-            <div class="meta">Joined ${new Date(r.created_at).toLocaleDateString()}</div>
-          </div>
-        </div>
-      `).join('');
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || 'Failed to load referral data.');
+        }
+
+        referralLink = result.referral_link || '';
+        referralCode = result.referral_code || '';
+
+        document.getElementById('referralLink').value = referralLink;
+        document.getElementById('totalReferrals').textContent = result.summary.total_referrals;
+        document.getElementById('totalDepositAmount').textContent = formatMoney(result.summary.total_deposit_amount);
+        document.getElementById('totalBonusEarned').textContent = formatMoney(result.summary.total_bonus_earned);
+
+        const referrals = result.referrals || [];
+        const depositedCount = referrals.filter(r => r.has_deposited).length;
+        document.getElementById('depositedUsers').textContent = depositedCount;
+
+        if (referrals.length === 0) {
+          list.innerHTML = `
+            <div class="mini-empty">
+              No referrals yet. Share your link to start earning.<br />
+              <a href="#" id="emptyShare">Share on WhatsApp</a>
+            </div>
+          `;
+          document.getElementById('emptyShare')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            shareWhatsApp();
+          });
+          return;
+        }
+
+        list.innerHTML = referrals.map(r => {
+          let badge, amountLine;
+
+          if (r.has_deposited) {
+            badge = '<span class="status-badge status-approved">Deposited</span>';
+            amountLine = `${formatMoney(r.approved_deposit_volume)} approved`;
+            if (r.pending_deposit_count > 0) {
+              amountLine += ` • ${formatMoney(r.pending_deposit_volume)} pending`;
+            }
+          } else if (r.pending_deposit_count > 0) {
+            badge = '<span class="status-badge status-pending">Pending deposit</span>';
+            amountLine = `${formatMoney(r.pending_deposit_volume)} awaiting approval`;
+          } else {
+            badge = '<span class="status-badge status-none">No deposit yet</span>';
+            amountLine = 'Has not deposited';
+          }
+
+          const lastDeposit = r.last_deposit_at
+            ? `Last deposit ${new Date(r.last_deposit_at).toLocaleDateString()}`
+            : `Joined ${new Date(r.created_at).toLocaleDateString()}`;
+
+          return `
+            <div class="mini-item">
+              <div class="hist-icon" style="background: #eef2ff; color: #4f46e5;">
+                <span style="font-weight: 900; font-size: .8rem;">${escapeHtml(getInitials(r.full_name))}</span>
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div class="title">${escapeHtml(r.full_name || 'User')}</div>
+                <div class="meta">${lastDeposit}</div>
+              </div>
+              <div style="text-align: right;">
+                ${badge}
+                <div class="meta" style="margin-top: 6px;">${amountLine}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        list.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
+      }
     }
 
     function shareWhatsApp() {
@@ -230,6 +263,7 @@
     });
 
     document.getElementById('whatsappBtn').addEventListener('click', shareWhatsApp);
+    document.getElementById('reloadReferrals').addEventListener('click', loadReferralDashboard);
 
     await loadReferralDashboard();
   </script>
