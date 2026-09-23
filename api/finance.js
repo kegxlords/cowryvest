@@ -97,8 +97,16 @@ export default async function handler(req, res) {
       const bankName = cleanText(destinationDetails.bank_name, 120);
       const paymentMethod = cleanText(destinationDetails.payment_method, 80);
 
+      const MIN_WITHDRAWAL = 1000;
+
       if (!amount) {
         return res.status(400).json({ error: 'Valid withdrawal amount is required' });
+      }
+
+      if (amount < MIN_WITHDRAWAL) {
+        return res.status(400).json({
+          error: `Minimum withdrawal is ₦${MIN_WITHDRAWAL.toLocaleString()}`
+        });
       }
 
       if (!accountName || !accountNumber) {
