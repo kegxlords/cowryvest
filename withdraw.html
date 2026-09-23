@@ -14,10 +14,14 @@
     <div class="page-hero">
       <div>
         <h1>Withdraw Funds</h1>
-        <p>Withdrawals are paid from your Main Balance after admin approval.</p>
+        <p>Cash out from your Main Balance after admin approval.</p>
+      </div>
+      <div class="hero-chips">
+        <span class="chip frozen">Min withdrawal: ₦1,000</span>
       </div>
     </div>
 
+    <!-- Available balance hero -->
     <section class="withdraw-hero">
       <span class="label">Available Main Balance</span>
       <div class="value" id="mainBalance">₦0.00</div>
@@ -31,6 +35,7 @@
     </section>
 
     <div class="deposit-layout">
+      <!-- Form -->
       <section class="section-card">
         <div class="section-head">
           <h2>Withdrawal Request</h2>
@@ -41,7 +46,18 @@
         <form id="withdrawForm">
           <div class="form-group">
             <label for="amount">Amount</label>
-            <input type="number" id="amount" class="form-control" min="1" step="0.01" required />
+            <input
+              type="number"
+              id="amount"
+              class="form-control"
+              min="1000"
+              step="0.01"
+              placeholder="Minimum ₦1,000"
+              required
+            />
+            <div class="input-hint">
+              Minimum withdrawal: <strong>₦1,000</strong> • Maximum: <span id="maxHint">₦0.00</span>
+            </div>
           </div>
 
           <div class="form-group">
@@ -74,25 +90,50 @@
         </form>
       </section>
 
+      <!-- Rules -->
       <section class="section-card">
         <div class="section-head">
-          <h2>Recent Withdrawals</h2>
+          <h2>Withdrawal Rules</h2>
         </div>
-        <div id="withdrawRequests" class="mini-list">
-          <div class="mini-empty">Loading...</div>
+
+        <div class="steps-card" style="background: #fff;">
+          <ol style="margin-left: 18px; color: var(--text-muted); font-size: .92rem; display: grid; gap: 10px;">
+            <li><strong>Main Balance only.</strong> Frozen Balance can never be withdrawn.</li>
+            <li><strong>Minimum ₦1,000</strong> per request.</li>
+            <li><strong>Deducted immediately.</strong> The amount leaves your Main Balance when you submit.</li>
+            <li><strong>Auto-refund on rejection.</strong> If admin rejects, the money returns to your Main Balance.</li>
+            <li><strong>Paid after approval.</strong> Admin verifies and sends to your account or wallet.</li>
+          </ol>
+        </div>
+
+        <div class="pay-note" style="margin-top: 14px;">
+          Double-check your account number or wallet address before submitting.
+          Wrong details are the most common cause of delayed payouts.
         </div>
       </section>
     </div>
+
+    <section class="section-card">
+      <div class="section-head">
+        <h2>Recent Withdrawals</h2>
+        <button class="btn btn-secondary" id="reloadBtn">Refresh</button>
+      </div>
+      <div id="withdrawRequests" class="mini-list">
+        <div class="mini-empty">Loading...</div>
+      </div>
+    </section>
   </main>
 
   <div id="footer-placeholder"></div>
 
   <script type="module">
-    import { initUI } from '/lib/ui.js';
+    import { initUI, updateBalanceChip } from '/lib/ui.js';
     import { supabase } from '/lib/supabase.js';
     import { formatMoney } from '/lib/format.js';
 
     await initUI();
+
+    const MIN_WITHDRAWAL = 1000;
 
     let mainBalance = 0;
 
@@ -124,64 +165,73 @@
       return `<span class="status-badge status-${status}">${status}</span>`;
     }
 
+    async function apiGet(url) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
+    /* ---------- Loaders ---------- */
+
     async function loadProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const result = await apiGet('/api/user?action=profile');
+        mainBalance = Number(result.profile?.main_balance || 0);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('main_balance')
-        .eq('id', user.id)
-        .single();
-
-      mainBalance = Number(profile?.main_balance || 0);
-      document.getElementById('mainBalance').textContent = formatMoney(mainBalance);
+        document.getElementById('mainBalance').textContent = formatMoney(mainBalance);
+        document.getElementById('maxHint').textContent = formatMoney(mainBalance);
+        updateBalanceChip(mainBalance);
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     async function loadRequests() {
       const container = document.getElementById('withdrawRequests');
       container.innerHTML = '<div class="mini-empty">Loading...</div>';
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const result = await apiGet('/api/user?action=history');
+        const withdrawals = (result.history || [])
+          .filter(h => h.category === 'withdrawal')
+          .slice(0, 10);
 
-      const { data: requests, error } = await supabase
-        .from('financial_requests')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('type', 'withdrawal')
-        .order('created_at', { ascending: false })
-        .limit(10);
+        if (withdrawals.length === 0) {
+          container.innerHTML = '<div class="mini-empty">No withdrawal requests yet.</div>';
+          return;
+        }
 
-      if (error) {
-        container.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
-        return;
-      }
-
-      if (!requests || requests.length === 0) {
-        container.innerHTML = '<div class="mini-empty">No withdrawal requests yet.</div>';
-        return;
-      }
-
-      container.innerHTML = requests.map(r => {
-        const d = r.destination_details || {};
-
-        return `
+        container.innerHTML = withdrawals.map(r => `
           <div class="mini-item">
-            <div>
-              <div class="title">Withdrawal • ${escapeHtml(d.account_name || '-')}</div>
+            <div class="hist-icon debit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 21V9"></path>
+                <path d="m7 14 5-5 5 5"></path>
+                <path d="M5 3h14"></path>
+              </svg>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div class="title">Withdrawal ${statusBadge(r.status)}</div>
               <div class="meta">
-                ${escapeHtml(d.account_number || '-')} • ${new Date(r.created_at).toLocaleString()}
+                ${escapeHtml(r.description || '-')} • ${new Date(r.created_at).toLocaleString()}
               </div>
             </div>
-            <div style="text-align:right;">
-              <div class="amount debit">-${formatMoney(r.amount)}</div>
-              <div style="margin-top:6px;">${statusBadge(r.status)}</div>
-            </div>
+            <div class="amount debit">-${formatMoney(r.amount)}</div>
           </div>
-        `;
-      }).join('');
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
+      }
     }
+
+    /* ---------- Quick % chips ---------- */
 
     document.querySelectorAll('.quick-amt').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -191,6 +241,22 @@
         hideAlert();
       });
     });
+
+    /* ---------- Live validation ---------- */
+
+    amountInput.addEventListener('input', () => {
+      const value = Number.parseFloat(amountInput.value);
+
+      if (Number.isFinite(value) && value > 0 && value < MIN_WITHDRAWAL) {
+        showAlert(`Minimum withdrawal is ${formatMoney(MIN_WITHDRAWAL)}.`);
+      } else if (Number.isFinite(value) && value > mainBalance) {
+        showAlert('Amount exceeds your available Main Balance.');
+      } else {
+        hideAlert();
+      }
+    });
+
+    /* ---------- Submit ---------- */
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -207,8 +273,13 @@
         return;
       }
 
+      if (amount < MIN_WITHDRAWAL) {
+        showAlert(`Minimum withdrawal is ${formatMoney(MIN_WITHDRAWAL)}.`);
+        return;
+      }
+
       if (amount > mainBalance) {
-        showAlert('Amount exceeds available Main Balance.');
+        showAlert('Amount exceeds your available Main Balance.');
         return;
       }
 
@@ -258,6 +329,11 @@
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Withdrawal Request';
       }
+    });
+
+    document.getElementById('reloadBtn').addEventListener('click', async () => {
+      await loadProfile();
+      await loadRequests();
     });
 
     await loadProfile();
