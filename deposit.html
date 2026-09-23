@@ -18,6 +18,7 @@
       </div>
       <div class="hero-chips">
         <span class="chip main">Main: <span id="mainBalance">₦0.00</span></span>
+        <span class="chip frozen">Min deposit: ₦1,000</span>
       </div>
     </div>
 
@@ -37,7 +38,7 @@
         <div class="steps-card">
           <h3>How manual deposit works</h3>
           <ol>
-            <li>Transfer the exact amount to the account shown above.</li>
+            <li>Transfer at least <strong>₦1,000</strong> to the account shown above.</li>
             <li>Submit a deposit request with the name on the transfer.</li>
             <li>Admin verifies and credits your Main Balance.</li>
           </ol>
@@ -57,7 +58,23 @@
         <form id="depositForm">
           <div class="form-group">
             <label for="amount">Amount</label>
-            <input type="number" id="amount" class="form-control" min="1" step="0.01" required />
+            <input
+              type="number"
+              id="amount"
+              class="form-control"
+              min="1000"
+              step="0.01"
+              placeholder="Minimum ₦1,000"
+              required
+            />
+            <div class="input-hint">Minimum deposit: <strong>₦1,000</strong></div>
+
+            <div class="quick-amounts" style="margin-top: 10px;">
+              <button type="button" class="quick-amt" data-amt="1000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦1,000</button>
+              <button type="button" class="quick-amt" data-amt="5000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦5,000</button>
+              <button type="button" class="quick-amt" data-amt="10000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦10,000</button>
+              <button type="button" class="quick-amt" data-amt="50000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦50,000</button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -99,11 +116,14 @@
 
     await initUI();
 
+    const MIN_DEPOSIT = 1000;
+
     let selectedMethod = PAYMENT_METHODS[0];
 
     const alertBox = document.getElementById('depositAlert');
     const form = document.getElementById('depositForm');
     const submitBtn = document.getElementById('depositBtn');
+    const amountInput = document.getElementById('amount');
 
     function showAlert(message, type = 'error') {
       alertBox.textContent = message;
@@ -126,6 +146,19 @@
 
     function statusBadge(status) {
       return `<span class="status-badge status-${status}">${status}</span>`;
+    }
+
+    async function apiGet(url) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
     }
 
     /* ---------- Payment methods ---------- */
@@ -159,7 +192,7 @@
       document.getElementById('payNote').textContent = selectedMethod.note || '';
 
       document.getElementById('payDetails').innerHTML = selectedMethod.details
-        .map((d, i) => `
+        .map(d => `
           <div class="pay-row">
             <span class="label">${escapeHtml(d.label)}</span>
             <span class="right">
@@ -183,66 +216,71 @@
       });
     }
 
-    /* ---------- Data loading ---------- */
+    /* ---------- Data ---------- */
 
     async function loadProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('main_balance')
-        .eq('id', user.id)
-        .single();
-
-      document.getElementById('mainBalance').textContent =
-        formatMoney(profile?.main_balance);
+      try {
+        const result = await apiGet('/api/user?action=profile');
+        document.getElementById('mainBalance').textContent =
+          formatMoney(result.profile?.main_balance);
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     async function loadRequests() {
       const container = document.getElementById('depositRequests');
       container.innerHTML = '<div class="mini-empty">Loading...</div>';
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const result = await apiGet('/api/user?action=history');
+        const deposits = (result.history || []).filter(h => h.category === 'deposit').slice(0, 10);
 
-      const { data: requests, error } = await supabase
-        .from('financial_requests')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('type', 'deposit')
-        .order('created_at', { ascending: false })
-        .limit(10);
+        if (deposits.length === 0) {
+          container.innerHTML = '<div class="mini-empty">No deposit requests yet.</div>';
+          return;
+        }
 
-      if (error) {
-        container.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
-        return;
-      }
-
-      if (!requests || requests.length === 0) {
-        container.innerHTML = '<div class="mini-empty">No deposit requests yet.</div>';
-        return;
-      }
-
-      container.innerHTML = requests.map(r => {
-        const name = r.depositor_name || r.destination_details?.depositor_name || '-';
-
-        return `
+        container.innerHTML = deposits.map(r => `
           <div class="mini-item">
-            <div>
-              <div class="title">Deposit • ${escapeHtml(name)}</div>
+            <div class="hist-icon credit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v12"></path>
+                <path d="m7 10 5 5 5-5"></path>
+                <path d="M5 21h14"></path>
+              </svg>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div class="title">Deposit ${statusBadge(r.status)}</div>
               <div class="meta">
-                ${escapeHtml(r.payment_method || '-')} • ${new Date(r.created_at).toLocaleString()}
+                ${escapeHtml(r.description || '-')} • ${new Date(r.created_at).toLocaleString()}
               </div>
             </div>
-            <div style="text-align:right;">
-              <div class="amount credit">+${formatMoney(r.amount)}</div>
-              <div style="margin-top:6px;">${statusBadge(r.status)}</div>
-            </div>
+            <div class="amount credit">+${formatMoney(r.amount)}</div>
           </div>
-        `;
-      }).join('');
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
+      }
     }
+
+    /* ---------- Quick amounts ---------- */
+
+    document.querySelectorAll('.quick-amt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        amountInput.value = btn.dataset.amt;
+        hideAlert();
+      });
+    });
+
+    amountInput.addEventListener('input', () => {
+      const value = Number.parseFloat(amountInput.value);
+      if (Number.isFinite(value) && value > 0 && value < MIN_DEPOSIT) {
+        showAlert(`Minimum deposit is ${formatMoney(MIN_DEPOSIT)}.`);
+      } else {
+        hideAlert();
+      }
+    });
 
     /* ---------- Submit ---------- */
 
@@ -250,11 +288,16 @@
       e.preventDefault();
       hideAlert();
 
-      const amount = Number.parseFloat(document.getElementById('amount').value);
+      const amount = Number.parseFloat(amountInput.value);
       const depositor_name = document.getElementById('depositorName').value.trim();
 
       if (!Number.isFinite(amount) || amount <= 0) {
         showAlert('Enter a valid deposit amount.');
+        return;
+      }
+
+      if (amount < MIN_DEPOSIT) {
+        showAlert(`Minimum deposit is ${formatMoney(MIN_DEPOSIT)}.`);
         return;
       }
 
