@@ -149,37 +149,31 @@
       return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
     }
 
+    // API read (service role) — also fires the guarded daily self-heal
+    async function apiGet(url) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated.');
+
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Request failed.');
+      return result;
+    }
+
     async function loadHoldings() {
       grid.innerHTML = '<div class="mini-empty">Loading holdings...</div>';
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('user_stocks')
-        .select(`
-          id,
-          quantity,
-          total_initial_invested,
-          purchase_source,
-          lock_in_days,
-          stocks (
-            company_name,
-            symbol,
-            current_price
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        grid.innerHTML = `<div class="mini-empty">${escapeHtml(error.message)}</div>`;
-        return;
+      try {
+        const result = await apiGet('/api/wealth?action=holdings');
+        holdings = result.holdings || [];
+        renderSummary();
+        renderGrid();
+      } catch (err) {
+        grid.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
       }
-
-      holdings = data || [];
-      renderSummary();
-      renderGrid();
     }
 
     function renderSummary() {
