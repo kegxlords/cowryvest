@@ -1,17 +1,30 @@
 // api/wealth.js
 //
 // ENDPOINTS:
-//   GET  /api/wealth?action=stocks    -> listed stocks (authenticated)
-//   GET  /api/wealth?action=holdings  -> user's holdings (authenticated)
-//   GET  /api/wealth                  -> midnight cron (Vercel, Bearer CRON_SECRET)
-//   POST /api/wealth { action: 'buy'  } -> purchase shares
-//   POST /api/wealth { action: 'sell' } -> convert unlocked shares
+//   GET  /api/wealth?action=stocks        -> listed stocks (authenticated)
+//   GET  /api/wealth?action=holdings      -> user's holdings (authenticated)
+//   GET  /api/wealth?action=stake_market  -> stocks + live up/down pools (authenticated)
+//   GET  /api/wealth?action=my_stakes     -> user's stakes (authenticated)
+//   GET  /api/wealth                       -> midnight cron (Vercel, Bearer CRON_SECRET)
+//   POST /api/wealth { action: 'buy' }          -> purchase shares
+//   POST /api/wealth { action: 'sell' }         -> convert unlocked shares
+//   POST /api/wealth { action: 'place_stake' }  -> stake up/down on a stock
 //
 import {
   supabaseAdmin,
   getAuthedUser,
   getBody
 } from '../lib/supabase-admin.js';
+
+// Guarded once-per-day job. Uses try/catch (NOT .catch) because Supabase
+// query builders are thenables without a .catch method.
+async function runMidnightHeal() {
+  try {
+    await supabaseAdmin.rpc('process_midnight_yield');
+  } catch (err) {
+    console.error('Midnight self-heal failed:', err.message);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -26,32 +39,36 @@ export default async function handler(req, res) {
       const action = req.query.action;
 
       // -------------------------------------
-      // STOCKS LIST + USER HOLDINGS
+      // STOCKS LIST
       // -------------------------------------
-      if (action === 'stocks' || action === 'holdings') {
+      if (action === 'stocks') {
         const user = await getAuthedUser(req);
         if (!user) {
           return res.status(401).json({ error: 'Unauthenticated' });
         }
 
-        // Self-healing daily yield: runs once per calendar day,
-        // no-op afterwards (guard lives in the DB function).
-        try {
-          await supabaseAdmin.rpc('process_midnight_yield');
-        } catch (err) {
-          console.error('Midnight self-heal failed:', err.message);
-}
+        await runMidnightHeal();
 
-        if (action === 'stocks') {
-          const { data, error } = await supabaseAdmin
-            .from('stocks')
-            .select('id, company_name, symbol, current_price, updated_at')
-            .order('company_name', { ascending: true });
+        const { data, error } = await supabaseAdmin
+          .from('stocks')
+          .select('id, company_name, symbol, current_price, updated_at')
+          .order('company_name', { ascending: true });
 
-          if (error) throw error;
+        if (error) throw error;
 
-          return res.status(200).json({ success: true, stocks: data || [] });
+        return res.status(200).json({ success: true, stocks: data || [] });
+      }
+
+      // -------------------------------------
+      // USER HOLDINGS
+      // -------------------------------------
+      if (action === 'holdings') {
+        const user = await getAuthedUser(req);
+        if (!user) {
+          return res.status(401).json({ error: 'Unauthenticated' });
         }
+
+        await runMidnightHeal();
 
         const { data, error } = await supabaseAdmin
           .from('user_stocks')
@@ -75,6 +92,73 @@ export default async function handler(req, res) {
         if (error) throw error;
 
         return res.status(200).json({ success: true, holdings: data || [] });
+      }
+
+      // -------------------------------------
+      // STAKE MARKET (stocks + live up/down pools)
+      // -------------------------------------
+      if (action === 'stake_market') {
+        const user = await getAuthedUser(req);
+        if (!user) {
+          return res.status(401).json({ error: 'Unauthenticated' });
+        }
+
+        await runMidnightHeal();
+
+        const { data: stocks, error: stocksError } = await supabaseAdmin
+          .from('stocks')
+          .select('id, company_name, symbol, current_price, updated_at')
+          .order('company_name', { ascending: true });
+
+        if (stocksError) throw stocksError;
+
+        const { data: pools, error: poolsError } = await supabaseAdmin
+          .from('stakes')
+          .select('stock_id, direction, amount')
+          .eq('status', 'open');
+
+        if (poolsError) throw poolsError;
+
+        const poolMap = {};
+        for (const p of pools || []) {
+          const m = poolMap[p.stock_id] || (poolMap[p.stock_id] = {
+            up_total: 0, down_total: 0, up_count: 0, down_count: 0
+          });
+          if (p.direction === 'up') { m.up_total += Number(p.amount); m.up_count += 1; }
+          else { m.down_total += Number(p.amount); m.down_count += 1; }
+        }
+
+        const out = (stocks || []).map(s => ({
+          ...s,
+          pools: poolMap[s.id] || { up_total: 0, down_total: 0, up_count: 0, down_count: 0 }
+        }));
+
+        return res.status(200).json({ success: true, stocks: out });
+      }
+
+      // -------------------------------------
+      // MY STAKES
+      // -------------------------------------
+      if (action === 'my_stakes') {
+        const user = await getAuthedUser(req);
+        if (!user) {
+          return res.status(401).json({ error: 'Unauthenticated' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('stakes')
+          .select(`
+            id, amount, direction, entry_price, balance_source,
+            status, payout, settled_price, created_at, settled_at,
+            stocks ( company_name, symbol, current_price )
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, stakes: data || [] });
       }
 
       // -------------------------------------
@@ -146,7 +230,6 @@ export default async function handler(req, res) {
 
       const totalCost = Math.round(Number(stock.current_price) * quantity * 100) / 100;
 
-      // 1. Deduct balance atomically
       const { data: debitSuccess, error: debitError } = await supabaseAdmin.rpc('debit_balance', {
         p_user_id: user.id,
         p_amount: totalCost,
@@ -159,7 +242,6 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Insufficient balance' });
       }
 
-      // 2. Existing holding with same stock + same source?
       const { data: existingHolding, error: existingError } = await supabaseAdmin
         .from('user_stocks')
         .select('*')
@@ -180,7 +262,6 @@ export default async function handler(req, res) {
       let savedHolding = null;
 
       if (existingHolding) {
-        // Additive lock-in: existing days + newly bought quantity
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('user_stocks')
           .update({
@@ -228,7 +309,6 @@ export default async function handler(req, res) {
         savedHolding = inserted;
       }
 
-      // 3. Ledger entry for the purchase
       const { error: txError } = await supabaseAdmin.from('transactions').insert({
         user_id: user.id,
         type: 'stock_purchase',
@@ -293,7 +373,6 @@ export default async function handler(req, res) {
       const payout = Math.round(holding.quantity * currentPrice * 100) / 100;
       const destinationBalance = holding.purchase_source;
 
-      // 1. Credit payout + write ledger row atomically
       const { data: credited, error: creditError } = await supabaseAdmin.rpc(
         'credit_balance_with_transaction',
         {
@@ -312,14 +391,12 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Unable to credit payout' });
       }
 
-      // 2. Remove the holding
       const { error: deleteError } = await supabaseAdmin
         .from('user_stocks')
         .delete()
         .eq('id', holding.id);
 
       if (deleteError) {
-        // Compensate: take the payout back so money never appears from nowhere
         await supabaseAdmin.rpc('debit_balance', {
           p_user_id: user.id,
           p_amount: payout,
@@ -333,6 +410,42 @@ export default async function handler(req, res) {
         message: 'Shares converted successfully',
         payout
       });
+    }
+
+    // -------------------------------------
+    // PLACE STAKE
+    // -------------------------------------
+    if (action === 'place_stake') {
+      const stockId = body.stock_id;
+      const direction = body.direction;
+      const amount = Number(body.amount);
+      const source = body.balance_source || 'main';
+
+      if (!stockId) {
+        return res.status(400).json({ error: 'Stock ID is required' });
+      }
+
+      if (!['up', 'down'].includes(direction)) {
+        return res.status(400).json({ error: 'Choose Up or Down' });
+      }
+
+      if (!['main', 'frozen'].includes(source)) {
+        return res.status(400).json({ error: 'Invalid balance source' });
+      }
+
+      const { data: stake, error } = await supabaseAdmin.rpc('place_stake', {
+        p_user_id: user.id,
+        p_stock_id: stockId,
+        p_amount: amount,
+        p_direction: direction,
+        p_source: source
+      });
+
+      if (error) {
+        return res.status(400).json({ error: error.message });
+      }
+
+      return res.status(200).json({ success: true, message: 'Stake placed', stake });
     }
 
     return res.status(400).json({ error: 'Invalid action' });
