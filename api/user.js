@@ -9,7 +9,9 @@ const CREDIT_TRANSACTION_TYPES = [
   'stock_sale',
   'daily_yield',
   'referral_bonus',
-  'frozen_credit'
+  'frozen_credit',
+  'stake_win',
+  'stake_refund'
 ];
 
 const TRANSACTION_LABELS = {
@@ -17,7 +19,10 @@ const TRANSACTION_LABELS = {
   stock_sale: 'Stock Conversion',
   daily_yield: 'Daily 5% Yield',
   referral_bonus: 'Referral Bonus',
-  frozen_credit: 'Frozen Balance Credit'
+  frozen_credit: 'Frozen Balance Credit',
+  stake_place: 'Stake Placed',
+  stake_win: 'Stake Win',
+  stake_refund: 'Stake Refund'
 };
 
 function cleanText(value, maxLength = 120) {
@@ -107,6 +112,8 @@ export default async function handler(req, res) {
 
         if (reqError) throw reqError;
 
+        // Stake + investment + yield + bonus + frozen rows (exclude deposit/withdrawal
+        // which are represented by financial_requests below)
         const mappedTransactions = (transactions || [])
           .filter(t => !['deposit', 'withdrawal'].includes(t.type))
           .map(t => ({
@@ -123,34 +130,33 @@ export default async function handler(req, res) {
           }));
 
         const mappedRequests = (requests || []).map(r => {
-  let description = '';
+          let description = '';
 
-  if (r.type === 'deposit') {
-    const depositorName =
-      r.depositor_name ||
-      r.destination_details?.depositor_name ||
-      '';
+          if (r.type === 'deposit') {
+            const depositorName =
+              r.depositor_name ||
+              r.destination_details?.depositor_name ||
+              '';
+            description = depositorName
+              ? `Name on deposit: ${depositorName}`
+              : r.payment_method || '';
+          } else {
+            description = r.payment_method || '';
+          }
 
-    description = depositorName
-      ? `Name on deposit: ${depositorName}`
-      : r.payment_method || '';
-  } else {
-    description = r.payment_method || '';
-  }
-
-  return {
-    id: r.id,
-    source: 'request',
-    category: r.type,
-    label: r.type === 'deposit' ? 'Deposit Request' : 'Withdrawal Request',
-    amount: Number(r.amount),
-    direction: r.type === 'deposit' ? 'credit' : 'debit',
-    balance_type: 'main',
-    status: r.status,
-    description,
-    created_at: r.created_at
-  };
-});
+          return {
+            id: r.id,
+            source: 'request',
+            category: r.type,
+            label: r.type === 'deposit' ? 'Deposit Request' : 'Withdrawal Request',
+            amount: Number(r.amount),
+            direction: r.type === 'deposit' ? 'credit' : 'debit',
+            balance_type: 'main',
+            status: r.status,
+            description,
+            created_at: r.created_at
+          };
+        });
 
         const history = [...mappedTransactions, ...mappedRequests].sort(
           (a, b) => new Date(b.created_at) - new Date(a.created_at)
