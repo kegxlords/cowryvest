@@ -14,19 +14,19 @@
 
     <section class="stake-hero">
       <h1>Stake the Move</h1>
-      <p>Call whether a stock goes up or down by the next price update. Right callers split the pot of wrong callers — live market odds, no house edge.</p>
+      <p>Call whether a stock goes UP or DOWN by the next price update. Right call doubles your money. Wrong call forfeits it. No movement, full refund.</p>
       <div class="rule-row">
         <span>MIN STAKE ₦1,000</span>
-        <span>RESOLVES AT NEXT PRICE UPDATE</span>
-        <span>WINNERS SPLIT LOSERS' POT</span>
-        <span>FLAT / ONE-SIDED = REFUND</span>
+        <span>WIN = 2× YOUR STAKE</span>
+        <span>LOSE = STAKE FORFEITED</span>
+        <span>FLAT PRICE = FULL REFUND</span>
       </div>
     </section>
 
     <div class="page-hero" style="margin-bottom:14px;">
       <div>
         <h2 style="font-size:1.2rem;">Live Market</h2>
-        <p style="color:var(--text-muted);">Tap a stock to see real UP vs DOWN money before you commit.</p>
+        <p style="color:var(--text-muted);">Real crowd money on each side, right now. Tap a stock to stake.</p>
       </div>
       <div class="hero-chips">
         <span class="chip main">Main: <span id="mainChip">₦0.00</span></span>
@@ -102,9 +102,11 @@
       <div class="payout-preview">
         <div class="row"><span>Entry price</span><strong id="stEntry">₦0.00</strong></div>
         <div class="row"><span>If you win, you receive</span><span class="big" id="stPayout">₦0.00</span></div>
-        <div class="row"><span>Current odds</span><span class="mult" id="stMult">×0.00</span></div>
+        <div class="row"><span>Payout multiplier</span><span class="mult" id="stMult">×2.00</span></div>
       </div>
-      <div class="payout-warn" id="stWarn" style="display:none;"></div>
+      <div class="payout-warn" id="stWarn">
+        Win → 2× your stake. Lose → stake forfeited. Price unchanged → full refund.
+      </div>
 
       <div class="modal-actions">
         <button class="btn btn-secondary" id="stCancel">Cancel</button>
@@ -123,6 +125,8 @@
     await initUI();
 
     const MIN_STAKE = 1000;
+    const MULTIPLIER = 2;
+
     let profile = null;
     let stocks = [];
     let myStakes = [];
@@ -133,7 +137,7 @@
     const myBox = document.getElementById('myStakes');
 
     function escapeHtml(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
-    function logoText(s){return (s.symbol||s.company_name||'?').slice(0,2).toUpperCase();}
+    function logoText(s){return ((s&&s.symbol)||(s&&s.company_name)||'?').slice(0,2).toUpperCase();}
     function srcLabel(x){return x==='frozen'?'Frozen':'Main';}
 
     async function apiGet(url){
@@ -174,7 +178,7 @@
       updateBalanceChip(profile?.main_balance);
     }
 
-    /* ---------- Market grid with live pools ---------- */
+    /* ---------- Market grid with live crowd stats ---------- */
     function renderGrid(){
       if(stocks.length===0){ grid.innerHTML='<div class="mini-empty">No stocks listed yet.</div>'; return; }
       grid.innerHTML = stocks.map(s=>{
@@ -208,7 +212,7 @@
 
     /* ---------- My stakes ---------- */
     function renderMine(){
-      if(myStakes.length===0){ myBox.innerHTML='<div class="mini-empty">No stakes yet. Pick a stock above.</div>'; return; }
+      if(myStakes.length===0){ myBox.innerHTML='<div class="mini-empty">No stakes yet. Pick a stock above and make your call.</div>'; return; }
       myBox.innerHTML = myStakes.map(k=>{
         const dirChip = `<span class="dir-chip ${k.direction}">
           ${k.direction==='up'
@@ -219,8 +223,9 @@
         let foot;
         if(k.status==='open'){
           const cur = Number(k.stocks?.current_price||0);
-          const winning = k.direction==='up' ? cur>Number(k.entry_price) : cur<Number(k.entry_price);
-          const flat = cur===Number(k.entry_price);
+          const entry = Number(k.entry_price);
+          const winning = k.direction==='up' ? cur>entry : cur<entry;
+          const flat = cur===entry;
           foot = `<span class="${flat?'await':(winning?'live-win':'live-lose')}">
             ${flat?'Awaiting price move':(winning?'Currently winning':'Currently losing')} · now ${formatMoney(cur)}
           </span>`;
@@ -283,42 +288,21 @@
 
     function updatePreview(){
       if(!selected) return;
-      const pl = selected.pools||{up_total:0,down_total:0};
       const amt = getAmount();
-      const upAfter = pl.up_total + (direction==='up'?amt:0);
-      const downAfter = pl.down_total + (direction==='down'?amt:0);
-      const potAfter = upAfter + downAfter;
-      const mySide = direction==='up'?upAfter:downAfter;
-      const oppSide = direction==='up'?downAfter:upAfter;
 
       document.getElementById('stEntry').textContent = formatMoney(selected.current_price);
-
-      if(amt<MIN_STAKE || mySide<=0){
-        document.getElementById('stPayout').textContent='₦0.00';
-        document.getElementById('stMult').textContent='×0.00';
-      }else{
-        const mult = potAfter/mySide;
-        document.getElementById('stMult').textContent='×'+mult.toFixed(2);
-        document.getElementById('stPayout').textContent=formatMoney(amt*mult);
-      }
-
-      const warn=document.getElementById('stWarn');
-      if(oppSide<=0){
-        warn.style.display='block';
-        warn.textContent='No opposing stakes yet. If none appear before the next price update, this round voids and you are fully refunded.';
-      }else{
-        warn.style.display='none';
-      }
+      document.getElementById('stMult').textContent = '×' + MULTIPLIER.toFixed(2);
+      document.getElementById('stPayout').textContent = formatMoney(amt * MULTIPLIER);
 
       const bal = Number(getSource()==='frozen'?profile?.frozen_balance:profile?.main_balance);
-      const btn=document.getElementById('stConfirm');
-      if(amt<MIN_STAKE){ btn.disabled=true; btn.textContent='Min ₦1,000'; }
-      else if(amt>bal){ btn.disabled=true; btn.textContent='Insufficient '+srcLabel(getSource()); }
+      const btn = document.getElementById('stConfirm');
+      if(amt < MIN_STAKE){ btn.disabled=true; btn.textContent='Min ₦1,000'; }
+      else if(amt > bal){ btn.disabled=true; btn.textContent='Insufficient '+srcLabel(getSource()); }
       else { btn.disabled=false; btn.textContent='Place Stake'; }
     }
 
-    document.getElementById('dirUp').addEventListener('click',()=>{direction='up';document.getElementById('dirUp').classList.add('active');document.getElementById('dirDown').classList.remove('active');updatePreview();});
-    document.getElementById('dirDown').addEventListener('click',()=>{direction='down';document.getElementById('dirDown').classList.add('active');document.getElementById('dirUp').classList.remove('active');updatePreview();});
+    document.getElementById('dirUp').addEventListener('click',()=>{direction='up';document.getElementById('dirUp').classList.add('active');document.getElementById('dirDown').classList.remove('active');});
+    document.getElementById('dirDown').addEventListener('click',()=>{direction='down';document.getElementById('dirDown').classList.add('active');document.getElementById('dirUp').classList.remove('active');});
     document.querySelectorAll('input[name="st_source"]').forEach(r=>r.addEventListener('change',()=>{syncSrcCards();updatePreview();}));
     document.getElementById('stAmount').addEventListener('input',updatePreview);
     document.querySelectorAll('#stakeModal .quick-amt').forEach(b=>b.addEventListener('click',()=>{document.getElementById('stAmount').value=b.dataset.amt;updatePreview();}));
@@ -350,4 +334,4 @@
     await loadAll();
   </script>
 </body>
-  </html>
+</html>
