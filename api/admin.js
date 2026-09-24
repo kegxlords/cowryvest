@@ -51,10 +51,7 @@ export default async function handler(req, res) {
         const { data, error } = await supabaseAdmin.rpc('admin_platform_overview');
         if (error) throw error;
 
-        return res.status(200).json({
-          success: true,
-          stats: data
-        });
+        return res.status(200).json({ success: true, stats: data });
       }
 
       // -------------------------------
@@ -68,10 +65,7 @@ export default async function handler(req, res) {
 
         if (error) throw error;
 
-        return res.status(200).json({
-          success: true,
-          stocks: data || []
-        });
+        return res.status(200).json({ success: true, stocks: data || [] });
       }
 
       // -------------------------------
@@ -104,10 +98,7 @@ export default async function handler(req, res) {
         const { data, error } = await query;
         if (error) throw error;
 
-        return res.status(200).json({
-          success: true,
-          users: data || []
-        });
+        return res.status(200).json({ success: true, users: data || [] });
       }
 
       // -------------------------------
@@ -140,10 +131,7 @@ export default async function handler(req, res) {
         const { data, error } = await query;
         if (error) throw error;
 
-        return res.status(200).json({
-          success: true,
-          requests: data || []
-        });
+        return res.status(200).json({ success: true, requests: data || [] });
       }
 
       // -------------------------------
@@ -165,10 +153,7 @@ export default async function handler(req, res) {
 
         if (error) throw error;
 
-        return res.status(200).json({
-          success: true,
-          credits: data || []
-        });
+        return res.status(200).json({ success: true, credits: data || [] });
       }
 
       return res.status(400).json({ error: 'Invalid admin action' });
@@ -190,7 +175,7 @@ export default async function handler(req, res) {
     const action = body.action;
 
     // -------------------------------
-    // UPDATE STOCK PRICE
+    // UPDATE STOCK PRICE (settles open stakes atomically in the same tx)
     // -------------------------------
     if (action === 'update_price') {
       const stockId = body.stock_id;
@@ -204,19 +189,17 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Valid new price is required' });
       }
 
-      const { error } = await supabaseAdmin
-        .from('stocks')
-        .update({
-          current_price: newPrice,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', stockId);
+      const { data: settlement, error } = await supabaseAdmin.rpc('update_price_and_settle', {
+        p_stock_id: stockId,
+        p_new_price: newPrice
+      });
 
       if (error) throw error;
 
       return res.status(200).json({
         success: true,
-        message: 'Stock price updated'
+        message: 'Stock price updated and stakes settled',
+        settlement
       });
     }
 
