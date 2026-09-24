@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Stake | Cowryvest</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body>
+
+  <div id="header-placeholder"></div>
+
+  <main class="container page-container">
+
+    <section class="stake-hero">
+      <h1>Stake the Move</h1>
+      <p>Call whether a stock goes up or down by the next price update. Right callers split the pot of wrong callers — live market odds, no house edge.</p>
+      <div class="rule-row">
+        <span>MIN STAKE ₦1,000</span>
+        <span>RESOLVES AT NEXT PRICE UPDATE</span>
+        <span>WINNERS SPLIT LOSERS' POT</span>
+        <span>FLAT / ONE-SIDED = REFUND</span>
+      </div>
+    </section>
+
+    <div class="page-hero" style="margin-bottom:14px;">
+      <div>
+        <h2 style="font-size:1.2rem;">Live Market</h2>
+        <p style="color:var(--text-muted);">Tap a stock to see real UP vs DOWN money before you commit.</p>
+      </div>
+      <div class="hero-chips">
+        <span class="chip main">Main: <span id="mainChip">₦0.00</span></span>
+        <span class="chip frozen">Frozen: <span id="frozenChip">₦0.00</span></span>
+      </div>
+    </div>
+
+    <div id="stakeGrid" class="stock-grid">
+      <div class="mini-empty">Loading market...</div>
+    </div>
+
+    <div class="page-hero" style="margin:26px 0 14px;">
+      <div>
+        <h2 style="font-size:1.2rem;">My Stakes</h2>
+        <p style="color:var(--text-muted);">Open stakes settle at the next price update for that stock.</p>
+      </div>
+      <button class="btn btn-secondary" id="refreshBtn">Refresh</button>
+    </div>
+
+    <div id="myStakes" class="holdings-grid">
+      <div class="mini-empty">Loading your stakes...</div>
+    </div>
+  </main>
+
+  <!-- Stake Modal -->
+  <div class="modal-overlay" id="stakeModal">
+    <div class="modal">
+      <h2 id="stTitle">Stake</h2>
+
+      <div class="warning-box" id="stRule"></div>
+
+      <div class="form-group">
+        <label>Your call</label>
+        <div class="dir-toggle">
+          <button type="button" class="dir-btn up active" id="dirUp">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+            UP
+            <span class="sub">price rises</span>
+          </button>
+          <button type="button" class="dir-btn down" id="dirDown">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 8"/><path d="M14 17h7v-7"/></svg>
+            DOWN
+            <span class="sub">price falls</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Stake with</label>
+        <div class="source-cards">
+          <label class="source-card active" id="srcMainCard">
+            <input type="radio" name="st_source" value="main" checked />
+            <span><span class="src-label">Main Balance</span><br /><span class="src-bal" id="stMainBal">₦0.00</span></span>
+          </label>
+          <label class="source-card" id="srcFrozenCard">
+            <input type="radio" name="st_source" value="frozen" />
+            <span><span class="src-label">Frozen Balance</span><br /><span class="src-bal" id="stFrozenBal">₦0.00</span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="stAmount">Amount</label>
+        <input type="number" id="stAmount" class="form-control" min="1000" step="0.01" value="1000" />
+        <div class="quick-amounts" style="margin-top:10px;">
+          <button type="button" class="quick-amt" data-amt="1000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦1,000</button>
+          <button type="button" class="quick-amt" data-amt="2000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦2,000</button>
+          <button type="button" class="quick-amt" data-amt="5000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦5,000</button>
+          <button type="button" class="quick-amt" data-amt="10000" style="background:#eef2ff;border-color:#c7d2fe;color:#4338ca;">₦10,000</button>
+        </div>
+      </div>
+
+      <div class="payout-preview">
+        <div class="row"><span>Entry price</span><strong id="stEntry">₦0.00</strong></div>
+        <div class="row"><span>If you win, you receive</span><span class="big" id="stPayout">₦0.00</span></div>
+        <div class="row"><span>Current odds</span><span class="mult" id="stMult">×0.00</span></div>
+      </div>
+      <div class="payout-warn" id="stWarn" style="display:none;"></div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="stCancel">Cancel</button>
+        <button class="btn btn-primary" id="stConfirm">Place Stake</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-placeholder"></div>
+
+  <script type="module">
+    import { initUI, updateBalanceChip } from '/lib/ui.js';
+    import { supabase } from '/lib/supabase.js';
+    import { formatMoney } from '/lib/format.js';
+
+    await initUI();
+
+    const MIN_STAKE = 1000;
+    let profile = null;
+    let stocks = [];
+    let myStakes = [];
+    let selected = null;
+    let direction = 'up';
+
+    const grid = document.getElementById('stakeGrid');
+    const myBox = document.getElementById('myStakes');
+
+    function escapeHtml(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
+    function logoText(s){return (s.symbol||s.company_name||'?').slice(0,2).toUpperCase();}
+    function srcLabel(x){return x==='frozen'?'Frozen':'Main';}
+
+    async function apiGet(url){
+      const { data:{ session } } = await supabase.auth.getSession();
+      if(!session) throw new Error('Not authenticated.');
+      const res = await fetch(url,{headers:{'Authorization':`Bearer ${session.access_token}`}});
+      const result = await res.json();
+      if(!res.ok) throw new Error(result.error||'Request failed.');
+      return result;
+    }
+
+    /* ---------- Load ---------- */
+    async function loadAll(){
+      try{
+        const [p, m, s] = await Promise.all([
+          apiGet('/api/user?action=profile'),
+          apiGet('/api/wealth?action=stake_market'),
+          apiGet('/api/wealth?action=my_stakes')
+        ]);
+        profile = p.profile;
+        stocks = m.stocks || [];
+        myStakes = s.stakes || [];
+        renderChips();
+        renderGrid();
+        renderMine();
+      }catch(err){
+        grid.innerHTML = `<div class="mini-empty">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderChips(){
+      const main = formatMoney(profile?.main_balance);
+      const frozen = formatMoney(profile?.frozen_balance);
+      document.getElementById('mainChip').textContent = main;
+      document.getElementById('frozenChip').textContent = frozen;
+      document.getElementById('stMainBal').textContent = main;
+      document.getElementById('stFrozenBal').textContent = frozen;
+      updateBalanceChip(profile?.main_balance);
+    }
+
+    /* ---------- Market grid with live pools ---------- */
+    function renderGrid(){
+      if(stocks.length===0){ grid.innerHTML='<div class="mini-empty">No stocks listed yet.</div>'; return; }
+      grid.innerHTML = stocks.map(s=>{
+        const pl = s.pools || {up_total:0,down_total:0,up_count:0,down_count:0};
+        const total = pl.up_total + pl.down_total;
+        const upPct = total>0 ? Math.round(pl.up_total/total*100) : 50;
+        const downPct = 100-upPct;
+        return `
+          <div class="stock-card premium">
+            <div class="stock-top">
+              <div class="stock-logo">${escapeHtml(logoText(s))}</div>
+              <span class="stock-symbol-chip">${escapeHtml(s.symbol||'N/A')}</span>
+            </div>
+            <h3>${escapeHtml(s.company_name)}</h3>
+            <div class="stock-price">${formatMoney(s.current_price)}</div>
+
+            <div class="pool-bar">
+              <div class="pool-seg up" style="width:${upPct}%">${upPct}%</div>
+              <div class="pool-seg down" style="width:${downPct}%">${downPct}%</div>
+            </div>
+            <div class="pool-legend">
+              <span class="up">▲ ${formatMoney(pl.up_total)} · ${pl.up_count}</span>
+              <span class="down">▼ ${formatMoney(pl.down_total)} · ${pl.down_count}</span>
+            </div>
+
+            <button class="btn btn-primary w-full" data-stake="${s.id}" style="margin-top:6px;">Stake Up / Down</button>
+          </div>`;
+      }).join('');
+      document.querySelectorAll('[data-stake]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.stake)));
+    }
+
+    /* ---------- My stakes ---------- */
+    function renderMine(){
+      if(myStakes.length===0){ myBox.innerHTML='<div class="mini-empty">No stakes yet. Pick a stock above.</div>'; return; }
+      myBox.innerHTML = myStakes.map(k=>{
+        const dirChip = `<span class="dir-chip ${k.direction}">
+          ${k.direction==='up'
+            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 8"/><path d="M14 17h7v-7"/></svg>'}
+          ${k.direction.toUpperCase()}</span>`;
+
+        let foot;
+        if(k.status==='open'){
+          const cur = Number(k.stocks?.current_price||0);
+          const winning = k.direction==='up' ? cur>Number(k.entry_price) : cur<Number(k.entry_price);
+          const flat = cur===Number(k.entry_price);
+          foot = `<span class="${flat?'await':(winning?'live-win':'live-lose')}">
+            ${flat?'Awaiting price move':(winning?'Currently winning':'Currently losing')} · now ${formatMoney(cur)}
+          </span>`;
+        }else{
+          const pl = Number(k.payout||0)-Number(k.amount);
+          foot = `<span class="${pl>=0?'live-win':'live-lose'}">${pl>=0?'+':''}${formatMoney(pl)} result</span>`;
+        }
+
+        return `
+          <div class="stake-card">
+            <div class="sc-head">
+              <div class="stock-logo" style="width:40px;height:40px;border-radius:12px;font-size:.82rem;">${escapeHtml(logoText(k.stocks||{}))}</div>
+              <div style="flex:1;min-width:0;">
+                <div class="sc-name">${escapeHtml(k.stocks?.company_name||'Stock')}<span class="sym">${escapeHtml(k.stocks?.symbol||'')}</span></div>
+                <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                  ${dirChip}
+                  <span class="status-badge status-${k.status}">${k.status}</span>
+                  <span class="badge ${k.balance_source==='frozen'?'badge-frozen':'badge-main'}">${srcLabel(k.balance_source)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="sc-grid">
+              <div class="sc-stat"><div class="l">Staked</div><div class="v">${formatMoney(k.amount)}</div></div>
+              <div class="sc-stat"><div class="l">Entry</div><div class="v">${formatMoney(k.entry_price)}</div></div>
+              <div class="sc-stat"><div class="l">${k.status==='open'?'Now':'Settled'}</div><div class="v">${formatMoney(k.status==='open'?(k.stocks?.current_price||0):k.settled_price)}</div></div>
+              <div class="sc-stat"><div class="l">Payout</div><div class="v">${k.status==='open'?'—':formatMoney(k.payout)}</div></div>
+            </div>
+            <div class="sc-foot">
+              ${foot}
+              <span class="await">${new Date(k.created_at).toLocaleString()}</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    /* ---------- Modal ---------- */
+    function openModal(stockId){
+      selected = stocks.find(s=>s.id===stockId);
+      if(!selected) return;
+      direction='up';
+      document.getElementById('dirUp').classList.add('active');
+      document.getElementById('dirDown').classList.remove('active');
+      document.querySelector('input[name="st_source"][value="main"]').checked=true;
+      syncSrcCards();
+      document.getElementById('stAmount').value=MIN_STAKE;
+      document.getElementById('stTitle').textContent=`Stake ${selected.company_name}`;
+      document.getElementById('stRule').innerHTML=`Entry locks at <strong>${formatMoney(selected.current_price)}</strong>. Resolves at the next price update for this stock.`;
+      updatePreview();
+      document.getElementById('stakeModal').classList.add('active');
+    }
+    function closeModal(){ document.getElementById('stakeModal').classList.remove('active'); selected=null; }
+
+    function syncSrcCards(){
+      const v=document.querySelector('input[name="st_source"]:checked').value;
+      document.getElementById('srcMainCard').classList.toggle('active',v==='main');
+      document.getElementById('srcFrozenCard').classList.toggle('active',v==='frozen');
+    }
+    function getAmount(){ const n=Number.parseFloat(document.getElementById('stAmount').value); return Number.isFinite(n)?n:0; }
+    function getSource(){ return document.querySelector('input[name="st_source"]:checked').value; }
+
+    function updatePreview(){
+      if(!selected) return;
+      const pl = selected.pools||{up_total:0,down_total:0};
+      const amt = getAmount();
+      const upAfter = pl.up_total + (direction==='up'?amt:0);
+      const downAfter = pl.down_total + (direction==='down'?amt:0);
+      const potAfter = upAfter + downAfter;
+      const mySide = direction==='up'?upAfter:downAfter;
+      const oppSide = direction==='up'?downAfter:upAfter;
+
+      document.getElementById('stEntry').textContent = formatMoney(selected.current_price);
+
+      if(amt<MIN_STAKE || mySide<=0){
+        document.getElementById('stPayout').textContent='₦0.00';
+        document.getElementById('stMult').textContent='×0.00';
+      }else{
+        const mult = potAfter/mySide;
+        document.getElementById('stMult').textContent='×'+mult.toFixed(2);
+        document.getElementById('stPayout').textContent=formatMoney(amt*mult);
+      }
+
+      const warn=document.getElementById('stWarn');
+      if(oppSide<=0){
+        warn.style.display='block';
+        warn.textContent='No opposing stakes yet. If none appear before the next price update, this round voids and you are fully refunded.';
+      }else{
+        warn.style.display='none';
+      }
+
+      const bal = Number(getSource()==='frozen'?profile?.frozen_balance:profile?.main_balance);
+      const btn=document.getElementById('stConfirm');
+      if(amt<MIN_STAKE){ btn.disabled=true; btn.textContent='Min ₦1,000'; }
+      else if(amt>bal){ btn.disabled=true; btn.textContent='Insufficient '+srcLabel(getSource()); }
+      else { btn.disabled=false; btn.textContent='Place Stake'; }
+    }
+
+    document.getElementById('dirUp').addEventListener('click',()=>{direction='up';document.getElementById('dirUp').classList.add('active');document.getElementById('dirDown').classList.remove('active');updatePreview();});
+    document.getElementById('dirDown').addEventListener('click',()=>{direction='down';document.getElementById('dirDown').classList.add('active');document.getElementById('dirUp').classList.remove('active');updatePreview();});
+    document.querySelectorAll('input[name="st_source"]').forEach(r=>r.addEventListener('change',()=>{syncSrcCards();updatePreview();}));
+    document.getElementById('stAmount').addEventListener('input',updatePreview);
+    document.querySelectorAll('#stakeModal .quick-amt').forEach(b=>b.addEventListener('click',()=>{document.getElementById('stAmount').value=b.dataset.amt;updatePreview();}));
+    document.getElementById('stCancel').addEventListener('click',closeModal);
+    document.getElementById('stakeModal').addEventListener('click',e=>{if(e.target.id==='stakeModal')closeModal();});
+
+    document.getElementById('stConfirm').addEventListener('click',async()=>{
+      if(!selected) return;
+      const btn=document.getElementById('stConfirm');
+      btn.disabled=true; btn.textContent='Placing...';
+      try{
+        const { data:{ session } } = await supabase.auth.getSession();
+        if(!session) throw new Error('Not authenticated.');
+        const res=await fetch('/api/wealth',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+          body:JSON.stringify({action:'place_stake',stock_id:selected.id,direction,amount:getAmount(),balance_source:getSource()})
+        });
+        const result=await res.json();
+        if(!res.ok) throw new Error(result.error||'Stake failed.');
+        closeModal();
+        await loadAll();
+      }catch(err){ alert(err.message); }
+      finally{ btn.disabled=false; btn.textContent='Place Stake'; }
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click',loadAll);
+
+    await loadAll();
+  </script>
+</body>
+  </html>
