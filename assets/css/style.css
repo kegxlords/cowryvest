@@ -3408,3 +3408,66 @@ footer { background: var(--card-bg); border-top: 1px solid var(--border); paddin
 .modal-overlay .modal {
   margin: auto;
 }
+/* =========================================
+   FLOATING MOBILE FOOTER (self-contained fix)
+========================================= */
+
+.mobile-floating-nav {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(94vw, 480px);
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+  display: flex;
+  overflow: hidden;
+  z-index: 150;
+}
+
+.mobile-floating-nav a {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 4px 9px;
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: 0.2s ease;
+}
+
+.mobile-floating-nav a svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.mobile-floating-nav a span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-floating-nav a.active {
+  color: var(--primary);
+  background: #e8efff;
+}
+
+.mobile-floating-nav a:active {
+  transform: scale(0.96);
+}
+
+/* keep page content clear of the bar */
+body.has-floating-nav {
+  padding-bottom: 110px;
+}
