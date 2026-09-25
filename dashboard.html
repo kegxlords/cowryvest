@@ -127,6 +127,18 @@
           Portfolio
         </a>
 
+        <a href="/stake.html" class="action-tile">
+          <div class="tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 4v12"></path>
+              <path d="m4 7 3-3 3 3"></path>
+              <path d="M17 20V8"></path>
+              <path d="m14 17 3 3 3-3"></path>
+            </svg>
+          </div>
+          Stake
+        </a>
+
         <a href="/deposit.html" class="action-tile">
           <div class="tile-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -196,7 +208,8 @@
       </div>
     </section>
   </main>
-  <!-- Welcome + Telegram popup -->
+
+  <!-- ===================== WELCOME + TELEGRAM POPUP ===================== -->
   <div class="welcome-overlay" id="welcomeOverlay">
     <div class="welcome-card">
       <div class="welcome-head">
@@ -226,6 +239,7 @@
       </div>
     </div>
   </div>
+
   <div id="footer-placeholder"></div>
 
   <script type="module">
@@ -235,13 +249,18 @@
 
     await initUI();
 
-    // Time-based greeting
+    /* ---------- CONFIG ---------- */
+    const TELEGRAM_GROUP_URL = 'https://t.me/YOUR_GROUP_HANDLE'; // <-- REPLACE with your real group link
+    const SHOW_EVERY_VISIT = true;  // set to false to show once per day
+
+    /* ---------- GREETING ---------- */
     const hour = new Date().getHours();
     document.getElementById('greetingText').textContent =
       hour < 12 ? 'Good morning,' :
       hour < 17 ? 'Good afternoon,' :
       'Good evening,';
 
+    /* ---------- HELPERS ---------- */
     function escapeHtml(value) {
       return String(value || '')
         .replace(/&/g, '&amp;')
@@ -251,7 +270,6 @@
         .replace(/'/g, '&#039;');
     }
 
-    // All data now comes from server APIs (service role)
     async function apiGet(url) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated.');
@@ -265,30 +283,7 @@
       return result;
     }
 
-    async function loadDashboard() {
-      const [profileRes, holdingsRes, historyRes] = await Promise.allSettled([
-        apiGet('/api/user?action=profile'),
-        apiGet('/api/wealth?action=holdings'),
-        apiGet('/api/user?action=history')
-      ]);
-
-      const profile = profileRes.status === 'fulfilled' ? profileRes.value.profile : null;
-      const holdings = holdingsRes.status === 'fulfilled' ? (holdingsRes.value.holdings || []) : [];
-      const history = historyRes.status === 'fulfilled' ? (historyRes.value.history || []) : [];
-
-      if (holdingsRes.status === 'rejected') {
-        document.getElementById('holdingsList').innerHTML =
-          `<div class="mini-empty">${escapeHtml(holdingsRes.reason.message)}</div>`;
-      }
-
-      if (historyRes.status === 'rejected') {
-        document.getElementById('activityList').innerHTML =
-          `<div class="mini-empty">${escapeHtml(historyRes.reason.message)}</div>`;
-      }
-
-      renderDashboard(profile, holdings, history);
-      setupWelcome(profile?.full_name);
-
+    /* ---------- RENDERERS ---------- */
     function renderDashboard(profile, holdings, history) {
       const mainBalance = Number(profile?.main_balance || 0);
       const frozenBalance = Number(profile?.frozen_balance || 0);
@@ -387,9 +382,6 @@
         }).join('');
       }
     }
-/* ---------- Welcome + Telegram popup ---------- */
-    const TELEGRAM_GROUP_URL = 'https://t.me/YOUR_GROUP_HANDLE'; // <-- replace with your real group link
-    const SHOW_EVERY_VISIT = true;  // set to false to show only once per day
 
     function setupWelcome(name) {
       const overlay = document.getElementById('welcomeOverlay');
@@ -402,7 +394,7 @@
 
       const close = () => {
         overlay.classList.remove('active');
-        localStorage.setItem(dayKey, '1');
+        if (!SHOW_EVERY_VISIT) localStorage.setItem(dayKey, '1');
       };
 
       document.getElementById('welcomeClose').addEventListener('click', close);
@@ -418,6 +410,33 @@
       // small delay so the dashboard paints first, then the popup slides in
       setTimeout(() => overlay.classList.add('active'), 600);
     }
+
+    /* ---------- MAIN LOAD ---------- */
+    async function loadDashboard() {
+      const [profileRes, holdingsRes, historyRes] = await Promise.allSettled([
+        apiGet('/api/user?action=profile'),
+        apiGet('/api/wealth?action=holdings'),
+        apiGet('/api/user?action=history')
+      ]);
+
+      const profile = profileRes.status === 'fulfilled' ? profileRes.value.profile : null;
+      const holdings = holdingsRes.status === 'fulfilled' ? (holdingsRes.value.holdings || []) : [];
+      const history = historyRes.status === 'fulfilled' ? (historyRes.value.history || []) : [];
+
+      if (holdingsRes.status === 'rejected') {
+        document.getElementById('holdingsList').innerHTML =
+          `<div class="mini-empty">${escapeHtml(holdingsRes.reason.message)}</div>`;
+      }
+
+      if (historyRes.status === 'rejected') {
+        document.getElementById('activityList').innerHTML =
+          `<div class="mini-empty">${escapeHtml(historyRes.reason.message)}</div>`;
+      }
+
+      renderDashboard(profile, holdings, history);
+      setupWelcome(profile?.full_name);
+    }
+
     await loadDashboard();
   </script>
 </body>
