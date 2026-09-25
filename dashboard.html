@@ -196,7 +196,36 @@
       </div>
     </section>
   </main>
+  <!-- Welcome + Telegram popup -->
+  <div class="welcome-overlay" id="welcomeOverlay">
+    <div class="welcome-card">
+      <div class="welcome-head">
+        <button class="welcome-close" id="welcomeClose" aria-label="Close">✕</button>
+        <h2 id="welcomeTitle">Welcome back 👋</h2>
+        <p id="welcomeSub">Your money is working. Here's what's new.</p>
+      </div>
 
+      <div class="welcome-body">
+        <div class="tg-panel">
+          <div class="tg-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 2 11 13"></path>
+              <path d="M22 2 15 22l-4-9-9-4 20-7z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3>Join the Cowryvest Community</h3>
+            <p>Daily price updates, staking signals, payout alerts and direct access to admins & fellow investors — all on Telegram.</p>
+          </div>
+        </div>
+
+        <div class="welcome-actions">
+          <button class="btn btn-secondary" id="welcomeLater">Maybe later</button>
+          <button class="btn btn-telegram" id="welcomeJoin">Join Telegram</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="footer-placeholder"></div>
 
   <script type="module">
@@ -258,7 +287,7 @@
       }
 
       renderDashboard(profile, holdings, history);
-    }
+      setupWelcome(profile?.full_name);
 
     function renderDashboard(profile, holdings, history) {
       const mainBalance = Number(profile?.main_balance || 0);
@@ -358,7 +387,37 @@
         }).join('');
       }
     }
+/* ---------- Welcome + Telegram popup ---------- */
+    const TELEGRAM_GROUP_URL = 'https://t.me/YOUR_GROUP_HANDLE'; // <-- replace with your real group link
+    const SHOW_EVERY_VISIT = true;  // set to false to show only once per day
 
+    function setupWelcome(name) {
+      const overlay = document.getElementById('welcomeOverlay');
+      const dayKey = 'cowryvest_welcome_' + new Date().toDateString();
+
+      if (!SHOW_EVERY_VISIT && localStorage.getItem(dayKey)) return;
+
+      document.getElementById('welcomeTitle').textContent =
+        `Welcome back, ${name || 'Investor'} 👋`;
+
+      const close = () => {
+        overlay.classList.remove('active');
+        localStorage.setItem(dayKey, '1');
+      };
+
+      document.getElementById('welcomeClose').addEventListener('click', close);
+      document.getElementById('welcomeLater').addEventListener('click', close);
+      document.getElementById('welcomeJoin').addEventListener('click', () => {
+        window.open(TELEGRAM_GROUP_URL, '_blank');
+        close();
+      });
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+      });
+
+      // small delay so the dashboard paints first, then the popup slides in
+      setTimeout(() => overlay.classList.add('active'), 600);
+    }
     await loadDashboard();
   </script>
 </body>
